@@ -740,12 +740,23 @@ void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nbtot, in
       /* Check wether new vertex is canonical */
       if (canon(G, new_numberings, &new_nbtot, &new_nbop)) {
         if (G->size == G->maxsize) {
-          dual_count++;
-          if (DUALS) {
-            write_planar_code(G);
-          } else {
-            /* Label vertices, then angles, and output dual graphs */
-            label_vertices(G, facecount, new_numberings, new_nbtot, new_nbop, 0);
+          cont = 0;
+          if (G->boundary_length == 2) {
+            temp = new_numberings[0];
+            if (G->deg[temp->start] == G->deg[temp->end]) {
+              if (facecount[G->deg[temp->start] + 1] == 2) cont = 1;
+            } else {
+              if (facecount[G->deg[temp->start] + 1] && facecount[G->deg[temp->end] + 1]) cont = 1;
+            }
+          }
+          if (!cont) {
+            dual_count++;
+            if (DUALS) {
+              if (OUTPUT) write_planar_code(G);
+            } else {
+              /* Label vertices, then angles, and output dual graphs */
+              label_vertices(G, facecount, new_numberings, new_nbtot, new_nbop, 0);
+            }
           }
         } else {
           /* Construct descendants */
