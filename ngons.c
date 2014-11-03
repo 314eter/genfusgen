@@ -803,6 +803,16 @@ void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nbtot, in
 }
 
 
+void write_help() {
+  fprintf(stdout, "Usage: ngons [-p] [-d] [-o OUTFILE] SPECS\n\n");
+  fprintf(stdout, " -p\twrite planar code to stdout or outfile\n");
+  fprintf(stdout, " -d\tgenerate inner duals\n");
+  fprintf(stdout, " -o\twrite to outfile instead of stdout\n");
+  fprintf(stdout, " SPECS\tsequence of pairs \"n:m\", meaning there are m n-gons\n\n");
+  fprintf(stdout, "Example: ngons 5:3 6:3\n");
+}
+
+
 int main(int argc, char *argv[]) {
   int c, option_index;
 
@@ -830,7 +840,15 @@ int main(int argc, char *argv[]) {
       case 'o':
         OUTFILE = fopen(optarg, "w");
         break;
+      default:
+        write_help();
+        return 1;
     }
+  }
+
+  if (optind == argc) {
+    write_help();
+    return 1;
   }
 
   int i, face, count, countsize;
