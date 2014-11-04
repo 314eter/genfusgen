@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <getopt.h>
+#include <time.h>
 
 typedef struct e {
   int start; /* start vertex of edge */
@@ -184,19 +185,19 @@ static void compute_dual_code(GRAPH* G, unsigned char *code) {
   }
 }
 
-void write_header() {
+static void write_header() {
   unsigned char header[15] = ">>planar_code<<";
   fwrite(header, sizeof(unsigned char), 15, OUTFILE);
 }
 
-void write_planar_code(GRAPH *G) {
+static void write_planar_code(GRAPH *G) {
   unsigned char code[G->size + G->edges + 1];
 
   compute_code(G, code);
   fwrite(code, sizeof(unsigned char), sizeof(code), OUTFILE);
 }
 
-void write_dual_planar_code(GRAPH *G) {
+static void write_dual_planar_code(GRAPH *G) {
   unsigned char code[3 * G->maxedges - 3 * (G->edges / 2) - G->maxsize + 2];
 
   compute_dual_code(G, code);
@@ -204,7 +205,7 @@ void write_dual_planar_code(GRAPH *G) {
 }
 
 
-int canon_angle_labeling(GRAPH *G, EDGE **numberings, int nbop, int *filtered_numbs, int nbf) {
+static int canon_angle_labeling(GRAPH *G, EDGE **numberings, int nbop, int *filtered_numbs, int nbf) {
   int fn, numb, i, c;
 
   for (fn = 0; fn < nbf; fn++) {
@@ -226,7 +227,7 @@ int canon_angle_labeling(GRAPH *G, EDGE **numberings, int nbop, int *filtered_nu
   return 1;
 }
 
-void label_angles(GRAPH* G, EDGE**numberings, int nbop, int *filtered_numbs, int nbf, int n) {
+static void label_angles(GRAPH* G, EDGE**numberings, int nbop, int *filtered_numbs, int nbf, int n) {
   EDGE *edge;
   int vertex, label;
 
@@ -258,7 +259,7 @@ void label_angles(GRAPH* G, EDGE**numberings, int nbop, int *filtered_numbs, int
 }
 
 
-int canon_vertex_labeling(GRAPH *G, EDGE **numberings, int nbtot, int *filtered_numbs, int *nbf) {
+static int canon_vertex_labeling(GRAPH *G, EDGE **numberings, int nbtot, int *filtered_numbs, int *nbf) {
   int numb, i, c, fn = 0;
 
   for (numb = 1; numb < nbtot; numb++) {
@@ -278,7 +279,7 @@ int canon_vertex_labeling(GRAPH *G, EDGE **numberings, int nbtot, int *filtered_
   return 1;
 }
 
-void label_vertices(GRAPH *G, int *facecount, EDGE **numberings, int nbtot, int nbop, int n) {
+static void label_vertices(GRAPH *G, int *facecount, EDGE **numberings, int nbtot, int nbop, int n) {
   int vertex, label, totdeg, i;
   int filtered_numbs[2 * G->boundary_length], nbf;
 
@@ -573,7 +574,7 @@ static int canon(GRAPH *G, EDGE **numberings, int *nbtot, int *nbop) {
 }
 
 
-int is_augmenting(GRAPH* G, int *facecount) {
+static int is_augmenting(GRAPH* G, int *facecount) {
   int i, j, msum = 0, nsum = 0;
 
   /* Property 2 */
@@ -588,7 +589,7 @@ int is_augmenting(GRAPH* G, int *facecount) {
   return 1;
 }
 
-void add_vertex(GRAPH* G, EDGE* edge, int l) {
+static void add_vertex(GRAPH* G, EDGE* edge, int l) {
   int i, vertex, new_vertex = G->size;
   EDGE *temp = edge, *next_temp, *new_edge, *new_inverse = 0, *first_inverse = 0;
 
@@ -631,7 +632,7 @@ void add_vertex(GRAPH* G, EDGE* edge, int l) {
   G->firstedge[new_vertex] = new_inverse;
 }
 
-void remove_vertex(GRAPH* G) {
+static void remove_vertex(GRAPH* G) {
   int last_vertex = G->size - 1, deg = G->deg[last_vertex];
   EDGE *end, *run, *temp, *temp_inverse;
 
@@ -652,7 +653,7 @@ void remove_vertex(GRAPH* G) {
   G->boundary_length = G->boundary_length + deg - 3;
 }
 
-void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nbtot, int nbop) {
+static void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nbtot, int nbop) {
   int number, number2, i, cont;
   EDGE *edge, *temp;
   int maxlength, l, length, vertex, prev_vertex;
@@ -803,7 +804,7 @@ void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nbtot, in
 }
 
 
-void write_help() {
+static void write_help() {
   fprintf(stdout, "Usage: ngons [-p] [-d] [-o OUTFILE] SPECS\n\n");
   fprintf(stdout, " -p\twrite planar code to stdout or outfile\n");
   fprintf(stdout, " -d\tgenerate inner duals\n");
@@ -815,6 +816,8 @@ void write_help() {
 
 int main(int argc, char *argv[]) {
   int c, option_index;
+  clock_t start, end;
+  double cpu_time;
 
   /* Process command line options */
   static struct option long_options[] = {
@@ -926,14 +929,21 @@ int main(int argc, char *argv[]) {
 
   /* Start Construction */
   if (OUTPUT) write_header();
+  start = clock();
   if (G->size == G->maxsize) {
+    dual_count = 1;
     label_vertices(G, facecount, numberings, nbtot, nbop, 0);
   } else {
     construct_graphs(G, facecount, numberings, nbtot, nbop);
   }
+  end = clock();
+  cpu_time = ((double) (end - start)) / CLOCKS_PER_SEC;
 
   fprintf(stderr, "%d graphs generated, %d inner duals, %d labeled inner duals\n",
           global_count, dual_count, labeled_count);
+  fprintf(stderr, "CPU time: %.2fs, graphs/s: %.0f, graphs/labeled: %d, labeled/id: %d\n",
+          cpu_time, global_count / cpu_time,
+          global_count / labeled_count, labeled_count / dual_count);
 
   /* Free memory */
   free(edge); free(inverse);
