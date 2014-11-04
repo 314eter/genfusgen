@@ -41,7 +41,9 @@ typedef struct {
 
 #define NUMBER(G, numberings, numb, i) numberings[numb * G->boundary_length + i]
 
-static int DUALS, OUTPUT, global_count, dual_count, labeled_count;
+static int DUALS, OUTPUT;
+
+static unsigned long int global_count, dual_count, labeled_count;
 
 static FILE *OUTFILE;
 
@@ -809,8 +811,7 @@ static void write_help() {
   fprintf(stdout, " -p\twrite planar code to stdout or outfile\n");
   fprintf(stdout, " -d\tgenerate inner duals\n");
   fprintf(stdout, " -o\twrite to outfile instead of stdout\n");
-  fprintf(stdout, " SPECS\tsequence of pairs \"n:m\", meaning there are m n-gons\n\n");
-  fprintf(stdout, "Example: ngons 5:3 6:3\n");
+  fprintf(stdout, " SPECS\tsequence of pairs \"n:m\", meaning there are m n-gons\n");
 }
 
 
@@ -819,19 +820,20 @@ int main(int argc, char *argv[]) {
   clock_t start, end;
   double cpu_time;
 
+  DUALS = 0;
+  OUTPUT = 0;
+  OUTFILE = stdout;
+
   /* Process command line options */
   static struct option long_options[] = {
     {"planar_code", no_argument, 0, 'p'},
     {"duals", no_argument, 0, 'd'},
     {"output", required_argument, 0, 'o'},
+    {"help", no_argument, 0, 'h'},
   };
 
-  DUALS = 0;
-  OUTPUT = 0;
-  OUTFILE = stdout;
-
   while (1) {
-    c = getopt_long(argc, argv, "pdo:", long_options, &option_index);
+    c = getopt_long(argc, argv, "pdo:h", long_options, &option_index);
     if (c == -1) break;
     switch (c) {
       case 'p':
@@ -939,11 +941,16 @@ int main(int argc, char *argv[]) {
   end = clock();
   cpu_time = ((double) (end - start)) / CLOCKS_PER_SEC;
 
-  fprintf(stderr, "%d graphs generated, %d inner duals, %d labeled inner duals\n",
-          global_count, dual_count, labeled_count);
-  fprintf(stderr, "CPU time: %.2fs, graphs/s: %.0f, graphs/labeled: %d, labeled/id: %d\n",
-          cpu_time, global_count / cpu_time,
-          global_count / labeled_count, labeled_count / dual_count);
+  if (DUALS) {
+    fprintf(stderr, "%ld inner duals generated\n", dual_count);
+    fprintf(stderr, "CPU time: %.2fs, graphs/s: %.0f\n", cpu_time, dual_count / cpu_time);
+  } else {
+    fprintf(stderr, "%ld graphs generated, %ld inner duals, %ld vertex-labeled inner duals\n",
+            global_count, dual_count, labeled_count);
+    fprintf(stderr, "CPU time: %.2fs, graphs/s: %.0f, graphs/labeled: %ld, labeled/id: %ld\n",
+            cpu_time, global_count / cpu_time,
+            global_count / labeled_count, labeled_count / dual_count);
+  }
 
   /* Free memory */
   free(edge); free(inverse);
