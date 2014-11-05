@@ -282,10 +282,8 @@ static int canon_vertex_labeling(GRAPH *G, EDGE **numberings, int nbtot, int *fi
 }
 
 static void label_vertices(GRAPH *G, int *facecount, EDGE **numberings, int nbtot, int nbop, int n) {
-  int vertex, label, totdeg, i;
+  int vertex, label, totdeg;
   int filtered_numbs[2 * G->boundary_length], nbf;
-
-  for (i = 0; i < G->size; i++) labeled[i] = 0;
 
   vertex = numberings[n]->end;
 
@@ -293,7 +291,6 @@ static void label_vertices(GRAPH *G, int *facecount, EDGE **numberings, int nbto
     vertexcode[n] = G->label[vertex];
     if (n == G->boundary_length - 1) {
       if (canon_vertex_labeling(G, numberings, nbtot, filtered_numbs, &nbf)) {
-        for (i = 0; i < G->size; i++) restlabel[i] = G->label[i] - G->outer[i];
         labeled_count++;
         label_angles(G, numberings, nbop, filtered_numbs, nbf, 0);
       }
@@ -305,10 +302,10 @@ static void label_vertices(GRAPH *G, int *facecount, EDGE **numberings, int nbto
       totdeg = G->deg[vertex] + label;
       if (facecount[totdeg]) {
         G->label[vertex] = vertexcode[n] = label;
+        restlabel[vertex] = label - G->outer[vertex];
         facecount[totdeg]--;
         if (n == G->boundary_length - 1) {
           if (canon_vertex_labeling(G, numberings, nbtot, filtered_numbs, &nbf)) {
-            for (i = 0; i < G->size; i++) restlabel[i] = G->label[i] - G->outer[i];
             labeled_count++;
             label_angles(G, numberings, nbop, filtered_numbs, nbf, 0);
           }
@@ -927,6 +924,7 @@ int main(int argc, char *argv[]) {
   vertexcode = malloc(G->maxedges * sizeof(int));
   anglecode = malloc(G->maxedges * sizeof(int));
   labeled = malloc(G->maxsize * sizeof(int));
+  for (i = 0; i < G->size; i++) labeled[i] = 0;
   restlabel = malloc(G->maxsize * sizeof(int));
 
   /* Start Construction */
@@ -934,7 +932,11 @@ int main(int argc, char *argv[]) {
   start = clock();
   if (G->size == G->maxsize) {
     dual_count = 1;
-    label_vertices(G, facecount, numberings, nbtot, nbop, 0);
+    if (DUALS) {
+      if (OUTPUT) write_planar_code(G);
+    } else {
+      label_vertices(G, facecount, numberings, nbtot, nbop, 0);
+    }
   } else {
     construct_graphs(G, facecount, numberings, nbtot, nbop);
   }
