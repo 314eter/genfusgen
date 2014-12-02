@@ -574,7 +574,7 @@ static int canon(GRAPH *G, EDGE **numberings, int *nbtot, int *nbop) {
 
 
 static int is_augmenting(GRAPH* G, int *facecount) {
-  int i, j, msum = 0, nsum = 0;
+  int i, j, msum = 0, nsum = G->size - G->maxsize + 1;
 
   /* Property 2 */
   for (i = 2; i <= G->maxdeg; i++) {
@@ -582,7 +582,7 @@ static int is_augmenting(GRAPH* G, int *facecount) {
       msum += COUNT(G, j, i - j);
     }
     nsum += facecount[i];
-    if (msum < nsum - G->maxsize + G->size + 1) return 0;
+    if (msum < nsum) return 0;
   }
 
   return 1;
