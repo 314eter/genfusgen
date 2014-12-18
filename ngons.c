@@ -45,6 +45,8 @@ static int DUALS, OUTPUT;
 
 static unsigned long int global_count, dual_count, labeled_count;
 
+static unsigned long int dual_trivial, labeled_trivial;
+
 static FILE *OUTFILE;
 
 static int *vertexcode, *anglecode, *labeled, *restlabel;
@@ -292,6 +294,7 @@ static void label_vertices(GRAPH *G, int *facecount, EDGE **numberings, int nbto
     if (n == G->boundary_length - 1) {
       if (canon_vertex_labeling(G, numberings, nbtot, filtered_numbs, &nbf)) {
         labeled_count++;
+        if (nbf == 0) labeled_trivial++;
         label_angles(G, numberings, nbop, filtered_numbs, nbf, 0);
       }
     } else {
@@ -307,6 +310,7 @@ static void label_vertices(GRAPH *G, int *facecount, EDGE **numberings, int nbto
         if (n == G->boundary_length - 1) {
           if (canon_vertex_labeling(G, numberings, nbtot, filtered_numbs, &nbf)) {
             labeled_count++;
+            if (nbf == 0) labeled_trivial++;
             label_angles(G, numberings, nbop, filtered_numbs, nbf, 0);
           }
         } else {
@@ -751,6 +755,7 @@ static void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nb
           }
           if (!cont) {
             dual_count++;
+            if (new_nbtot == 1) dual_trivial++;
             if (DUALS) {
               if (OUTPUT) write_planar_code(G);
             } else {
@@ -921,6 +926,7 @@ int main(int argc, char *argv[]) {
 
   /* Initialize global variables */
   global_count = dual_count = labeled_count = 0;
+  dual_trivial = labeled_trivial = 0;
   vertexcode = malloc(G->maxedges * sizeof(int));
   anglecode = malloc(G->maxedges * sizeof(int));
   labeled = malloc(G->maxsize * sizeof(int));
@@ -944,11 +950,11 @@ int main(int argc, char *argv[]) {
   cpu_time = ((double) (end - start)) / CLOCKS_PER_SEC;
 
   if (DUALS) {
-    fprintf(stderr, "%ld inner duals generated\n", dual_count);
+    fprintf(stderr, "%ld inner duals generated (%ld trivial)\n", dual_count, dual_trivial);
     fprintf(stderr, "CPU time: %.2fs, graphs/s: %.0f\n", cpu_time, dual_count / cpu_time);
   } else {
-    fprintf(stderr, "%ld graphs generated, %ld inner duals, %ld vertex-labeled inner duals\n",
-            global_count, dual_count, labeled_count);
+    fprintf(stderr, "%ld graphs generated, %ld inner duals (%ld trivial), %ld vertex-labeled inner duals (%ld trivial)\n",
+            global_count, dual_count, dual_trivial, labeled_count, labeled_trivial);
     fprintf(stderr, "CPU time: %.2fs, graphs/s: %.0f, graphs/labeled: %ld, labeled/id: %ld\n",
             cpu_time, global_count / cpu_time,
             global_count / labeled_count, labeled_count / dual_count);
