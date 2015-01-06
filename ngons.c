@@ -268,6 +268,7 @@ static int canon_vertex_labeling(GRAPH *G, EDGE **numberings, int nbtot, int *fi
 
   for (numb = 1; numb < nbtot; numb++) {
     for (i = 0; i < G->boundary_length; i++) {
+      if (vertexcode[i] == 0) continue;
       c = G->label[NUMBER(G, numberings, numb, i)->end];
       if (c > vertexcode[i]) {
         break;
@@ -290,7 +291,6 @@ static void label_vertices(GRAPH *G, int *facecount, EDGE **numberings, int nbto
   vertex = numberings[n]->end;
 
   if (G->label[vertex]) {
-    vertexcode[n] = G->label[vertex];
     if (n == G->boundary_length - 1) {
       if (canon_vertex_labeling(G, numberings, nbtot, filtered_numbs, &nbf)) {
         labeled_count++;
@@ -320,6 +320,7 @@ static void label_vertices(GRAPH *G, int *facecount, EDGE **numberings, int nbto
         facecount[totdeg]++;
       }
     }
+    vertexcode[n] = 0;
   }
 }
 
