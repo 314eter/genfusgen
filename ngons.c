@@ -950,14 +950,19 @@ int main(int argc, char *argv[]) {
   cpu_time = ((double) (end - start)) / CLOCKS_PER_SEC;
 
   if (DUALS) {
-    fprintf(stderr, "%ld inner duals generated (%ld trivial)\n", dual_count, dual_trivial);
-    fprintf(stderr, "CPU time: %.2fs, graphs/s: %.0f\n", cpu_time, dual_count / cpu_time);
+    fprintf(stderr, "inner duals:    %ld (%ld trivial)\n\n",
+            dual_count, dual_trivial);
+    fprintf(stderr, "CPU time:       %.2fs\n"
+                    "graphs/s:       %.0f\n",
+            cpu_time, dual_count / cpu_time);
   } else {
-    fprintf(stderr, "%ld graphs generated, %ld inner duals (%ld trivial), %ld vertex-labeled inner duals (%ld trivial)\n",
+    fprintf(stderr, "graphs:         %ld\n"
+                    "inner duals:    %ld (%ld trivial)\n"
+                    "vertex-labeled: %ld (%ld trivial)\n\n",
             global_count, dual_count, dual_trivial, labeled_count, labeled_trivial);
-    fprintf(stderr, "CPU time: %.2fs, graphs/s: %.0f, graphs/labeled: %ld, labeled/id: %ld\n",
-            cpu_time, global_count / cpu_time,
-            global_count / labeled_count, labeled_count / dual_count);
+    fprintf(stderr, "CPU time:       %.2fs\n"
+                    "graphs/s:       %.0f\n",
+            cpu_time, global_count / cpu_time);
   }
 
   /* Free memory */
