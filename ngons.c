@@ -285,42 +285,31 @@ static int canon_vertex_labeling(GRAPH *G, EDGE **numberings, int nbtot, int *fi
 }
 
 static void label_vertices(GRAPH *G, int *facecount, EDGE **numberings, int nbtot, int nbop, int n) {
-  int vertex, label, totdeg;
+  int vertex, label;
   int filtered_numbs[2 * G->boundary_length], nbf;
 
-  vertex = numberings[n]->end;
-
-  if (G->label[vertex]) {
-    if (n == G->boundary_length - 1) {
-      if (canon_vertex_labeling(G, numberings, nbtot, filtered_numbs, &nbf)) {
-        labeled_count++;
-        if (nbf == 0) labeled_trivial++;
-        label_angles(G, numberings, nbop, filtered_numbs, nbf, 0);
-      }
-    } else {
-      label_vertices(G, facecount, numberings, nbtot, nbop, n + 1);
-    }
-  } else {
-    for (label = G->outer[vertex]; label <= G->maxdeg - G->deg[vertex]; label++) {
-      totdeg = G->deg[vertex] + label;
-      if (facecount[totdeg]) {
-        G->label[vertex] = vertexcode[n] = label;
-        restlabel[vertex] = label - G->outer[vertex];
-        facecount[totdeg]--;
-        if (n == G->boundary_length - 1) {
-          if (canon_vertex_labeling(G, numberings, nbtot, filtered_numbs, &nbf)) {
-            labeled_count++;
-            if (nbf == 0) labeled_trivial++;
-            label_angles(G, numberings, nbop, filtered_numbs, nbf, 0);
-          }
-        } else {
+  for (; n < G->boundary_length; n++) {
+    vertex = numberings[n]->end;
+    if (G->label[vertex] == 0) {
+      for (label = G->deg[vertex] + G->outer[vertex]; label <= G->maxdeg; label++) {
+        if (facecount[label]) {
+          G->label[vertex] = vertexcode[n] = label;
+          restlabel[vertex] = label - G->deg[vertex] - G->outer[vertex];
+          facecount[label]--;
           label_vertices(G, facecount, numberings, nbtot, nbop, n + 1);
+          G->label[vertex] = 0;
+          facecount[label]++;
         }
-        G->label[vertex] = 0;
-        facecount[totdeg]++;
       }
+      vertexcode[n] = 0;
+      return;
     }
-    vertexcode[n] = 0;
+  }
+
+  if (canon_vertex_labeling(G, numberings, nbtot, filtered_numbs, &nbf)) {
+    labeled_count++;
+    if (nbf == 0) labeled_trivial++;
+    label_angles(G, numberings, nbop, filtered_numbs, nbf, 0);
   }
 }
 
