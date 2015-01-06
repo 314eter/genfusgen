@@ -215,6 +215,7 @@ static int canon_angle_labeling(GRAPH *G, EDGE **numberings, int nbop, int *filt
   for (fn = 0; fn < nbf; fn++) {
     numb = filtered_numbs[fn];
     for (i = 0; i < G->boundary_length; i++) {
+      if (anglecode[i] == 0) continue;
       if (numb < nbop) {
         c = NUMBER(G, numberings, numb, i)->label;
       } else {
@@ -240,7 +241,6 @@ static void label_angles(GRAPH* G, EDGE**numberings, int nbop, int *filtered_num
     vertex = edge->end;
     if (labeled[vertex] == G->outer[vertex] - 1) {
       edge->label = restlabel[vertex] + 1;
-      anglecode[n] = restlabel[vertex] + 1;
     } else {
       labeled[vertex]++;
       for (label = 0; label <= restlabel[vertex]; label++) {
@@ -250,6 +250,7 @@ static void label_angles(GRAPH* G, EDGE**numberings, int nbop, int *filtered_num
         label_angles(G, numberings, nbop, filtered_numbs, nbf, n + 1);
         restlabel[vertex] += label;
       }
+      anglecode[n] = 0;
       labeled[vertex]--;
       return;
     }
@@ -928,6 +929,7 @@ int main(int argc, char *argv[]) {
   dual_trivial = labeled_trivial = 0;
   vertexcode = malloc(G->maxedges * sizeof(int));
   anglecode = malloc(G->maxedges * sizeof(int));
+  for (i = 0; i < G->maxedges; i++) anglecode[i] = 0;
   labeled = malloc(G->maxsize * sizeof(int));
   for (i = 0; i < G->size; i++) labeled[i] = 0;
   restlabel = malloc(G->maxsize * sizeof(int));
