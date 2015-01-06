@@ -235,31 +235,30 @@ static void label_angles(GRAPH* G, EDGE**numberings, int nbop, int *filtered_num
   EDGE *edge;
   int vertex, label;
 
-  edge = numberings[n];
-  vertex = edge->end;
-
-  labeled[vertex]++;
-  if (labeled[vertex] == G->outer[vertex]) {
-    edge->label = restlabel[vertex] + 1;
-    anglecode[n] = restlabel[vertex] + 1;
-    if (n == G->boundary_length - 1) {
-      if (canon_angle_labeling(G, numberings, nbop, filtered_numbs, nbf)) {
-        global_count++;
-        if (OUTPUT) write_dual_planar_code(G);
-      }
+  for (; n < G->boundary_length; n++) {
+    edge = numberings[n];
+    vertex = edge->end;
+    if (labeled[vertex] == G->outer[vertex] - 1) {
+      edge->label = restlabel[vertex] + 1;
+      anglecode[n] = restlabel[vertex] + 1;
     } else {
-      label_angles(G, numberings, nbop, filtered_numbs, nbf, n + 1);
-    }
-  } else {
-    for (label = 0; label <= restlabel[vertex]; label++) {
-      edge->label = label + 1;
-      restlabel[vertex] -= label;
-      anglecode[n] = label + 1;
-      label_angles(G, numberings, nbop, filtered_numbs, nbf, n + 1);
-      restlabel[vertex] += label;
+      labeled[vertex]++;
+      for (label = 0; label <= restlabel[vertex]; label++) {
+        edge->label = label + 1;
+        restlabel[vertex] -= label;
+        anglecode[n] = label + 1;
+        label_angles(G, numberings, nbop, filtered_numbs, nbf, n + 1);
+        restlabel[vertex] += label;
+      }
+      labeled[vertex]--;
+      return;
     }
   }
-  labeled[vertex]--;
+
+  if (canon_angle_labeling(G, numberings, nbop, filtered_numbs, nbf)) {
+    global_count++;
+    if (OUTPUT) write_dual_planar_code(G);
+  }
 }
 
 
