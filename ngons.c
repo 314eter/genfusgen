@@ -49,7 +49,7 @@ static unsigned long int dual_trivial, labeled_trivial;
 
 static FILE *OUTFILE;
 
-static int *vertexcode, *anglecode, *labeled, *restlabel;
+static int *vertexcode, *anglecode, *labeled, *restlabel, *filtered_numbs;
 
 static void compute_code(GRAPH *G, unsigned char *code) {
   register EDGE *run;
@@ -209,7 +209,7 @@ static void write_dual_planar_code(GRAPH *G) {
 }
 
 
-static int canon_angle_labeling(GRAPH *G, EDGE **numberings, int nbop, int *filtered_numbs, int nbf) {
+static int canon_angle_labeling(GRAPH *G, EDGE **numberings, int nbop, int nbf) {
   int fn, numb, i, c;
 
   for (fn = 0; fn < nbf; fn++) {
@@ -232,7 +232,7 @@ static int canon_angle_labeling(GRAPH *G, EDGE **numberings, int nbop, int *filt
   return 1;
 }
 
-static void label_angles(GRAPH* G, EDGE**numberings, int nbop, int *filtered_numbs, int nbf, int n) {
+static void label_angles(GRAPH* G, EDGE**numberings, int nbop, int nbf, int n) {
   EDGE *edge;
   int vertex, label;
 
@@ -247,7 +247,7 @@ static void label_angles(GRAPH* G, EDGE**numberings, int nbop, int *filtered_num
         edge->label = label + 1;
         restlabel[vertex] -= label;
         anglecode[n] = label + 1;
-        label_angles(G, numberings, nbop, filtered_numbs, nbf, n + 1);
+        label_angles(G, numberings, nbop, nbf, n + 1);
         restlabel[vertex] += label;
       }
       anglecode[n] = 0;
@@ -256,14 +256,14 @@ static void label_angles(GRAPH* G, EDGE**numberings, int nbop, int *filtered_num
     }
   }
 
-  if (canon_angle_labeling(G, numberings, nbop, filtered_numbs, nbf)) {
+  if (canon_angle_labeling(G, numberings, nbop, nbf)) {
     global_count++;
     if (OUTPUT) write_dual_planar_code(G);
   }
 }
 
 
-static int canon_vertex_labeling(GRAPH *G, EDGE **numberings, int nbtot, int *filtered_numbs, int *nbf) {
+static int canon_vertex_labeling(GRAPH *G, EDGE **numberings, int nbtot, int *nbf) {
   int numb, i, c, fn = 0;
 
   for (numb = 1; numb < nbtot; numb++) {
@@ -285,8 +285,7 @@ static int canon_vertex_labeling(GRAPH *G, EDGE **numberings, int nbtot, int *fi
 }
 
 static void label_vertices(GRAPH *G, int *facecount, EDGE **numberings, int nbtot, int nbop, int n) {
-  int vertex, label;
-  int filtered_numbs[2 * G->boundary_length], nbf;
+  int vertex, label, nbf;
 
   for (; n < G->boundary_length; n++) {
     vertex = numberings[n]->end;
@@ -306,10 +305,10 @@ static void label_vertices(GRAPH *G, int *facecount, EDGE **numberings, int nbto
     }
   }
 
-  if (canon_vertex_labeling(G, numberings, nbtot, filtered_numbs, &nbf)) {
+  if (canon_vertex_labeling(G, numberings, nbtot, &nbf)) {
     labeled_count++;
     if (nbf == 0) labeled_trivial++;
-    label_angles(G, numberings, nbop, filtered_numbs, nbf, 0);
+    label_angles(G, numberings, nbop, nbf, 0);
   }
 }
 
@@ -923,6 +922,7 @@ int main(int argc, char *argv[]) {
   labeled = malloc(G->maxsize * sizeof(int));
   for (i = 0; i < G->size; i++) labeled[i] = 0;
   restlabel = malloc(G->maxsize * sizeof(int));
+  filtered_numbs = malloc(2 * G->maxedges * sizeof(int));
 
   /* Start Construction */
   if (OUTPUT) write_header();
