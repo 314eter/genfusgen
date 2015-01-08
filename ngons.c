@@ -41,7 +41,7 @@ typedef struct {
 
 #define NUMBER(G, numberings, numb, i) numberings[numb * G->boundary_length + i]
 
-static int DUALS, OUTPUT;
+static int DUALS, KEKULE, OUTPUT;
 
 static unsigned long int global_count, dual_count, labeled_count;
 
@@ -707,6 +707,12 @@ static void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nb
         }
       }
 
+      /* Filter kekule */
+      if (KEKULE && (G->size + 1 == G->maxsize) &&
+          (G->maxedges - G->boundary_length + l) % 2 == 0) {
+        continue;
+      }
+
       /* Check wether (edge, length) is smallest in orbit */
       cont = 0;
       for (i = nbop; i < nbtot; i++) {
@@ -812,19 +818,21 @@ int main(int argc, char *argv[]) {
   double cpu_time;
 
   DUALS = 0;
+  KEKULE = 0;
   OUTPUT = 0;
   OUTFILE = stdout;
 
   /* Process command line options */
   static struct option long_options[] = {
-    {"planar_code", no_argument, 0, 'p'},
-    {"duals", no_argument, 0, 'd'},
-    {"output", required_argument, 0, 'o'},
-    {"help", no_argument, 0, 'h'},
+    {"planar_code", no_argument,       0, 'p'},
+    {"duals",       no_argument,       0, 'd'},
+    {"kekule",      no_argument,       0, 'k'},
+    {"output",      required_argument, 0, 'o'},
+    {"help",        no_argument,       0, 'h'},
   };
 
   while (1) {
-    c = getopt_long(argc, argv, "pdo:h", long_options, &option_index);
+    c = getopt_long(argc, argv, "pdko:h", long_options, &option_index);
     if (c == -1) break;
     switch (c) {
       case 'p':
@@ -832,6 +840,9 @@ int main(int argc, char *argv[]) {
         break;
       case 'd':
         DUALS = 1;
+        break;
+      case 'k':
+        KEKULE = 1;
         break;
       case 'o':
         OUTFILE = fopen(optarg, "w");
