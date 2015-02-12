@@ -14,7 +14,12 @@ typedef struct e {
 
   int label; /* label of the angle starting with this edge */
   int mark;
-  int leftface; /* number of the face to the left */
+  int leftface2; /* number of the face to the left */
+  int leftface;
+  int rightface;
+
+  int matching; /* 0/1 or 2/4 */
+  int leftmatching;
 } EDGE;
 
 typedef struct {
@@ -25,6 +30,7 @@ typedef struct {
   int size; /* number of vertices */
   int edges; /* number of directed edges */
   int boundary_length; /* boundary length */
+  int faces; /* number of faces */
   int *counter; /* access only via COUNT, INCR COUNT, DECR_COUNT */
 
   int *deg; /* deg[v] = degree of vertex v */
@@ -33,6 +39,7 @@ typedef struct {
   EDGE **firstedge; /* *firstedge[v] = edge with start v */
 
   int mark;
+  int matching;
 } GRAPH;
 
 #define COUNT(G, deg, outer) G->counter[(outer) * (G->maxdeg + 1) + (deg)]
@@ -93,25 +100,25 @@ static void compute_code(GRAPH *G, unsigned char *code) {
 static void number_face(EDGE *edge, int number, int mark) {
   register EDGE* run;
 
-  edge->leftface = number;
+  edge->leftface2 = number;
   edge->mark = mark;
   if (!edge->label) {
     run = edge->inverse->next;
     while (run != edge) {
-      run->leftface = number;
+      run->leftface2 = number;
       run->mark = mark;
       run = run->inverse->next;
     }
   }
 }
 
-static int number_leftface(EDGE *edge, EDGE *startedge[], int *last_number, int mark) {
+static int number_leftface2(EDGE *edge, EDGE *startedge[], int *last_number, int mark) {
   if (edge->mark != mark) {
     startedge[(*last_number)++] = edge->inverse;
     number_face(edge, *last_number, mark);
     return *last_number;
   } else {
-    return edge->leftface;
+    return edge->leftface2;
   }
 }
 
@@ -135,18 +142,18 @@ static void compute_dual_code(GRAPH* G, unsigned char *code) {
   /* number faces adjacent to first edge */
   temp = G->firstedge[0];
   last_number = 0;
-  number_leftface(temp->inverse, startedge, &last_number, mark);
-  number_leftface(temp, startedge, &last_number, mark);
+  number_leftface2(temp->inverse, startedge, &last_number, mark);
+  number_leftface2(temp, startedge, &last_number, mark);
 
   actual_number = 1;
   while (actual_number <= faces) {
     if (temp) {
       /* actual number is a vertex of degree 3 in the dual graph */
-      *code = number_leftface(temp, startedge, &last_number, mark); code++;
+      *code = number_leftface2(temp, startedge, &last_number, mark); code++;
       if (!temp->inverse->label) {
         /* actual number is an inner vertex in the dual graph */
-        *code = number_leftface(temp->inverse->prev, startedge, &last_number, mark); code++;
-        *code = number_leftface(temp->next->inverse, startedge, &last_number, mark); code++;
+        *code = number_leftface2(temp->inverse->prev, startedge, &last_number, mark); code++;
+        *code = number_leftface2(temp->next->inverse, startedge, &last_number, mark); code++;
       } else {
         /* actual_number is in the boundary of the dual graph */
         if (!prev[actual_number - 1]) {
@@ -158,9 +165,9 @@ static void compute_dual_code(GRAPH* G, unsigned char *code) {
             prev[prev_number - 1] = last_number;
             prev_number = last_number;
           }
-          number_leftface(run, startedge, &last_number, mark);
-          next[run->leftface - 1] = prev_number;
-          prev[prev_number - 1] = run->leftface;
+          number_leftface2(run, startedge, &last_number, mark);
+          next[run->leftface2 - 1] = prev_number;
+          prev[prev_number - 1] = run->leftface2;
         }
         *code = prev[actual_number - 1]; code++;
 
@@ -173,9 +180,9 @@ static void compute_dual_code(GRAPH* G, unsigned char *code) {
             next[prev_number - 1] = last_number;
             prev_number = last_number;
           }
-          number_leftface(run, startedge, &last_number, mark);
-          prev[run->leftface - 1] = prev_number;
-          next[prev_number - 1] = run->leftface;
+          number_leftface2(run, startedge, &last_number, mark);
+          prev[run->leftface2 - 1] = prev_number;
+          next[prev_number - 1] = run->leftface2;
         }
         *code = next[actual_number - 1]; code++;
       }
@@ -207,6 +214,37 @@ static void write_dual_planar_code(GRAPH *G) {
   compute_dual_code(G, code);
   fwrite(code, sizeof(unsigned char), sizeof(code), OUTFILE);
 }
+
+
+/*static int kekule_greedy(GRAPH *G) {
+  register EDGE *run;
+  EDGE *edge;
+  int saturated[G->size];
+  int i, vertex, nsat = 0;
+
+  G->matching = 2 - G->matching;
+
+  for (i = 0; i < G->size; i++) saturated[i] = 0;
+
+  for (vertex = 0; vertex < G->size; vertex++) {
+    run = edge = G->firstedge[vertex];
+    do {
+      if (G->matching ^ run->matching) {
+        if (!saturated[edge->start] && !saturated[edge->end]) {
+          run->matching = run->inverse->matching = G->matching + 1;
+          saturated[edge->start] = saturated[edge->end] = 1;
+          nsat++;
+        } else {
+          run->matching = run->inverse->matching = G->matching;
+        }
+      }
+
+      run = run->next;
+    } while (run != edge);
+  }
+
+  return (nsat == G->size);
+}*/
 
 
 static int canon_angle_labeling(GRAPH *G, EDGE **numberings, int nbop, int nbf) {
@@ -596,6 +634,9 @@ static void add_vertex(GRAPH* G, EDGE* edge, int l) {
     new_edge->end = new_inverse->start = new_vertex;
     new_edge->inverse = new_inverse; new_inverse->inverse = new_edge;
     new_edge->mark = new_inverse->mark = G->mark;
+    new_edge->leftface = new_inverse->rightface = G->faces++;
+    new_edge->matching = new_inverse->matching = G->matching;
+    new_edge->leftmatching = new_inverse->leftmatching = G->matching;
 
     /* Connect with other edges */
     new_edge->prev = temp->inverse; new_edge->prev->next = new_edge;
@@ -607,12 +648,15 @@ static void add_vertex(GRAPH* G, EDGE* edge, int l) {
       new_inverse->next = temp->prev->inverse; new_inverse->next->prev = new_inverse;
       new_edge->label = 0;
       temp->label = 0;
+      new_edge->leftface = new_inverse->rightface = temp->leftface;
+      new_inverse->next->leftface = temp->prev->rightface = temp->leftface;
     }
     new_inverse->label = 0;
     temp = next_temp;
   }
   new_inverse->prev = first_inverse; first_inverse->next = new_inverse;
   new_inverse->label = 1;
+  new_inverse->leftface = new_edge->rightface = G->faces++;
 
   /* Update graph */
   G->size++;
@@ -643,6 +687,7 @@ static void remove_vertex(GRAPH* G) {
   G->size--;
   G->edges -= 2 * deg;
   G->boundary_length = G->boundary_length + deg - 3;
+  G->faces -= 2;
 }
 
 static void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nbtot, int nbop) {
@@ -894,6 +939,7 @@ int main(int argc, char *argv[]) {
   G->label = malloc(G->maxsize * sizeof(int));
   G->firstedge = malloc(G->maxsize * sizeof(EDGE*));
   G->mark = 0;
+  G->matching = 0;
 
   /* Initialize two vertices and two directed edge */
   EDGE *edge = malloc(sizeof(EDGE));
@@ -903,11 +949,16 @@ int main(int argc, char *argv[]) {
   edge->prev = edge->next = inverse->inverse = edge;
   inverse->prev = inverse->next = edge->inverse = inverse;
   edge->label = inverse->label = 1;
+  edge->leftface = inverse->rightface = 0;
+  edge->leftface = inverse->rightface = 1;
   edge->mark = inverse->mark = G->mark;
+  edge->matching = inverse->matching = G->matching;
+  edge->leftmatching = inverse->leftmatching = G->matching;
 
   G->size = 2;
   G->edges = 2;
   G->boundary_length = 2;
+  G->faces = 2;
 
   INCR_COUNT(G, 1, 1); INCR_COUNT(G, 1, 1);
 
@@ -958,10 +1009,14 @@ int main(int argc, char *argv[]) {
                     "graphs/s:       %.0f\n",
             cpu_time, dual_count / cpu_time);
   } else {
-    fprintf(stderr, "graphs:         %ld\n"
-                    "inner duals:    %ld (%ld trivial)\n"
+    if (KEKULE) {
+      fprintf(stderr, "kekule graphs:  %ld\n", global_count);
+    } else {
+      fprintf(stderr, "graphs:         %ld\n", global_count);
+    }
+    fprintf(stderr, "inner duals:    %ld (%ld trivial)\n"
                     "vertex-labeled: %ld (%ld trivial)\n\n",
-            global_count, dual_count, dual_trivial, labeled_count, labeled_trivial);
+            dual_count, dual_trivial, labeled_count, labeled_trivial);
     fprintf(stderr, "CPU time:       %.2fs\n"
                     "graphs/s:       %.0f\n",
             cpu_time, global_count / cpu_time);
