@@ -13,13 +13,8 @@ typedef struct e {
   struct e *inverse; /* inverse edge */
 
   int label; /* label of the angle starting with this edge */
-  int mark;
-  int leftface2; /* number of the face to the left */
   int leftface;
   int rightface;
-
-  int matching; /* 0/1 or 2/4 */
-  int leftmatching;
 } EDGE;
 
 typedef struct {
@@ -37,9 +32,6 @@ typedef struct {
   int *outer; /* outer[v] = number of occurences in outer face of vertex v */
   int *label; /* label[v] = label of vertex v */
   EDGE **firstedge; /* *firstedge[v] = edge with start v */
-
-  int mark;
-  int matching;
 } GRAPH;
 
 #define COUNT(G, deg, outer) G->counter[(outer) * (G->maxdeg + 1) + (deg)]
@@ -97,99 +89,96 @@ static void compute_code(GRAPH *G, unsigned char *code) {
   }
 }
 
-static void number_face(EDGE *edge, int number, int mark) {
-  register EDGE* run;
-
-  edge->leftface2 = number;
-  edge->mark = mark;
-  if (!edge->label) {
-    run = edge->inverse->next;
-    while (run != edge) {
-      run->leftface2 = number;
-      run->mark = mark;
-      run = run->inverse->next;
-    }
-  }
-}
-
-static int number_leftface2(EDGE *edge, EDGE *startedge[], int *last_number, int mark) {
-  if (edge->mark != mark) {
-    startedge[(*last_number)++] = edge->inverse;
-    number_face(edge, *last_number, mark);
-    return *last_number;
-  } else {
-    return edge->leftface2;
-  }
-}
-
 static void compute_dual_code(GRAPH* G, unsigned char *code) {
-  int faces = G->maxedges - (G->edges / 2) - G->maxsize + 1;
-  /*int number[faces];*/
-  register EDGE *run;
-  EDGE *temp, *startedge[faces];
-  int i, mark, last_number, actual_number, prev_number;
-  int next[faces], prev[faces];
+  unsigned char *edge_code;
+  int dual_size = G->maxedges - (G->edges / 2) - G->maxsize + 1;
+  EDGE *temp, *startedge[G->size];
+  int number[G->faces], prev[G->faces], next[G->faces], i;
+  int last_number, actual_number, last_edge_number;
 
-  for (i = 0; i < faces; i++) {
-    next[i] = 0;
+  for (i = 0; i < G->faces; i++) {
+    number[i] = 0;
     prev[i] = 0;
+    next[i] = 0;
   }
 
-  mark = 1 - G->mark;
-  G->mark = mark;
-  *code = faces; code++;
+  edge_code = code + 4 * G->faces + 1;
+  *code = dual_size; code++;
 
-  /* number faces adjacent to first edge */
   temp = G->firstedge[0];
-  last_number = 0;
-  number_leftface2(temp->inverse, startedge, &last_number, mark);
-  number_leftface2(temp, startedge, &last_number, mark);
+  number[temp->leftface] = 1;
+  number[temp->rightface] = 2;
+  last_number = 2;
+  startedge[1] = temp->inverse;
 
   actual_number = 1;
-  while (actual_number <= faces) {
-    if (temp) {
-      /* actual number is a vertex of degree 3 in the dual graph */
-      *code = number_leftface2(temp, startedge, &last_number, mark); code++;
-      if (!temp->inverse->label) {
-        /* actual number is an inner vertex in the dual graph */
-        *code = number_leftface2(temp->inverse->prev, startedge, &last_number, mark); code++;
-        *code = number_leftface2(temp->next->inverse, startedge, &last_number, mark); code++;
-      } else {
-        /* actual_number is in the boundary of the dual graph */
-        if (!prev[actual_number - 1]) {
-          prev_number = actual_number;
-          run = temp->inverse->prev->inverse;
-          for (i = 1; i < run->label; i++) {
-            startedge[last_number] = 0;
-            next[last_number++] = prev_number;
-            prev[prev_number - 1] = last_number;
-            prev_number = last_number;
-          }
-          number_leftface2(run, startedge, &last_number, mark);
-          next[run->leftface2 - 1] = prev_number;
-          prev[prev_number - 1] = run->leftface2;
-        }
-        *code = prev[actual_number - 1]; code++;
+  last_edge_number = G->faces;
 
-        if (!next[actual_number - 1]) {
-          prev_number = actual_number;
-          run = temp->next;
-          for (i = 1; i < temp->inverse->label; i++) {
-            startedge[last_number] = 0;
-            prev[last_number++] = prev_number;
-            next[prev_number - 1] = last_number;
-            prev_number = last_number;
-          }
-          number_leftface2(run, startedge, &last_number, mark);
-          prev[run->leftface2 - 1] = prev_number;
-          next[prev_number - 1] = run->leftface2;
-        }
-        *code = next[actual_number - 1]; code++;
+  while (actual_number <= G->faces) {
+    *code = number[temp->rightface]; code++;
+    if (!temp->label) {
+      /* actual number is an inner vertex */
+      if (!number[temp->prev->leftface]) {
+        startedge[last_number++] = temp->prev;
+        number[temp->prev->leftface] = last_number;
       }
+      *code = number[temp->prev->leftface]; code++;
+      if (!number[temp->inverse->next->rightface]) {
+        startedge[last_number++] = temp->inverse->next->inverse;
+        number[temp->inverse->next->rightface] = last_number;
+      }
+      *code = number[temp->inverse->next->rightface]; code++;
     } else {
-      /* actual_number is a vertex of degree 2 in the boundary of the dual graph */
-      *code = prev[actual_number - 1]; code++;
-      *code = next[actual_number - 1]; code++;
+      /* actual_number is an outer vertex of degree 3 */
+      if (!prev[temp->leftface]) {
+        if (!number[temp->prev->rightface]) {
+          startedge[last_number++] = temp->prev->inverse;
+          number[temp->prev->rightface] = last_number;
+        }
+
+        if (temp->prev->inverse->label > 1) {
+          *edge_code = actual_number; edge_code++;
+          prev[temp->leftface] = ++last_edge_number;
+          for (i = 0; i < temp->prev->inverse->label - 2; i++) {
+            *edge_code = last_edge_number + 1; edge_code++;
+            *edge_code = 0; edge_code++;
+            *edge_code = last_edge_number; edge_code++;
+            last_edge_number++;
+          }
+          *edge_code = number[temp->prev->rightface]; edge_code++;
+          *edge_code = 0; edge_code++;
+          next[temp->prev->rightface] = last_edge_number;
+        } else {
+          prev[temp->leftface] = number[temp->prev->rightface];
+          next[temp->prev->rightface] = actual_number;
+        }
+      }
+      *code = prev[temp->leftface]; code++;
+
+      if (!next[temp->leftface]) {
+        if (!number[temp->inverse->next->leftface]) {
+          startedge[last_number++] = temp->inverse->next;
+          number[temp->inverse->next->leftface] = last_number;
+        }
+
+        if (temp->label > 1) {
+          *edge_code = actual_number; edge_code++;
+          next[temp->leftface] = ++last_edge_number;
+          for (i = 0; i < temp->label - 2; i++) {
+            *edge_code = last_edge_number + 1; edge_code++;
+            *edge_code = 0; edge_code++;
+            *edge_code = last_edge_number; edge_code++;
+            last_edge_number++;
+          }
+          *edge_code = number[temp->inverse->next->leftface]; edge_code++;
+          *edge_code = 0; edge_code++;
+          prev[temp->inverse->next->leftface] = last_edge_number;
+        } else {
+          next[temp->leftface] = number[temp->inverse->next->leftface];
+          prev[temp->inverse->next->leftface] = actual_number;
+        }
+      }
+      *code = next[temp->leftface]; code++;
     }
     *code = 0; code++;
     temp = startedge[actual_number++];
@@ -214,37 +203,6 @@ static void write_dual_planar_code(GRAPH *G) {
   compute_dual_code(G, code);
   fwrite(code, sizeof(unsigned char), sizeof(code), OUTFILE);
 }
-
-
-/*static int kekule_greedy(GRAPH *G) {
-  register EDGE *run;
-  EDGE *edge;
-  int saturated[G->size];
-  int i, vertex, nsat = 0;
-
-  G->matching = 2 - G->matching;
-
-  for (i = 0; i < G->size; i++) saturated[i] = 0;
-
-  for (vertex = 0; vertex < G->size; vertex++) {
-    run = edge = G->firstedge[vertex];
-    do {
-      if (G->matching ^ run->matching) {
-        if (!saturated[edge->start] && !saturated[edge->end]) {
-          run->matching = run->inverse->matching = G->matching + 1;
-          saturated[edge->start] = saturated[edge->end] = 1;
-          nsat++;
-        } else {
-          run->matching = run->inverse->matching = G->matching;
-        }
-      }
-
-      run = run->next;
-    } while (run != edge);
-  }
-
-  return (nsat == G->size);
-}*/
 
 
 static int canon_angle_labeling(GRAPH *G, EDGE **numberings, int nbop, int nbf) {
@@ -621,7 +579,7 @@ static int is_augmenting(GRAPH* G, int *facecount) {
 
 static void add_vertex(GRAPH* G, EDGE* edge, int l) {
   int i, vertex, new_vertex = G->size;
-  EDGE *temp = edge, *next_temp, *new_edge, *new_inverse = 0, *first_inverse = 0;
+  EDGE *temp = edge, *next_temp, *new_edge = 0, *new_inverse = 0, *first_inverse = 0;
 
   for (i = 0; i <= l; i++) {
     vertex = temp->end;
@@ -633,10 +591,6 @@ static void add_vertex(GRAPH* G, EDGE* edge, int l) {
     new_edge->start = new_inverse->end = vertex;
     new_edge->end = new_inverse->start = new_vertex;
     new_edge->inverse = new_inverse; new_inverse->inverse = new_edge;
-    new_edge->mark = new_inverse->mark = G->mark;
-    new_edge->leftface = new_inverse->rightface = G->faces++;
-    new_edge->matching = new_inverse->matching = G->matching;
-    new_edge->leftmatching = new_inverse->leftmatching = G->matching;
 
     /* Connect with other edges */
     new_edge->prev = temp->inverse; new_edge->prev->next = new_edge;
@@ -644,6 +598,7 @@ static void add_vertex(GRAPH* G, EDGE* edge, int l) {
     if (i == 0) {
       first_inverse = new_inverse;
       new_edge->label = 1;
+      new_edge->leftface = new_inverse->rightface = G->faces++;
     } else {
       new_inverse->next = temp->prev->inverse; new_inverse->next->prev = new_inverse;
       new_edge->label = 0;
@@ -938,8 +893,6 @@ int main(int argc, char *argv[]) {
   G->outer = malloc(G->maxsize * sizeof(int));
   G->label = malloc(G->maxsize * sizeof(int));
   G->firstedge = malloc(G->maxsize * sizeof(EDGE*));
-  G->mark = 0;
-  G->matching = 0;
 
   /* Initialize two vertices and two directed edge */
   EDGE *edge = malloc(sizeof(EDGE));
@@ -951,9 +904,6 @@ int main(int argc, char *argv[]) {
   edge->label = inverse->label = 1;
   edge->leftface = inverse->rightface = 0;
   edge->leftface = inverse->rightface = 1;
-  edge->mark = inverse->mark = G->mark;
-  edge->matching = inverse->matching = G->matching;
-  edge->leftmatching = inverse->leftmatching = G->matching;
 
   G->size = 2;
   G->edges = 2;
