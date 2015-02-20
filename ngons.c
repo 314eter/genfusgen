@@ -96,7 +96,7 @@ static void compute_code(GRAPH *G, unsigned char *code) {
 static void compute_dual_code(GRAPH* G, unsigned char *code) {
   unsigned char *edge_code;
   int dual_size = G->maxedges - (G->edges / 2) - G->maxsize + 1;
-  EDGE *temp, *startedge[G->size];
+  EDGE *temp, *startedge[G->faces];
   int number[G->faces], prev[G->faces], next[G->faces], i;
   int last_number, actual_number, last_edge_number;
 
@@ -119,7 +119,12 @@ static void compute_dual_code(GRAPH* G, unsigned char *code) {
   last_edge_number = G->faces;
 
   while (actual_number <= G->faces) {
+    if (!number[temp->rightface]) {
+      startedge[last_number++] = temp->inverse;
+      number[temp->rightface] = last_number;
+    }
     *code = number[temp->rightface]; code++;
+
     if (!temp->label) {
       /* actual number is an inner vertex */
       if (!number[temp->prev->leftface]) {
@@ -195,18 +200,21 @@ static void write_header() {
 }
 
 static void write_planar_code(GRAPH *G) {
-  unsigned char code[G->size + G->edges + 1];
+  int size = G->size + G->edges + 1;
+  unsigned char code[size];
 
   compute_code(G, code);
-  fwrite(code, sizeof(unsigned char), sizeof(code), OUTFILE);
+  fwrite(code, sizeof(unsigned char), size, OUTFILE);
 }
 
 static void write_dual_planar_code(GRAPH *G) {
-  unsigned char code[3 * G->maxedges - 3 * (G->edges / 2) - G->maxsize + 2];
+  int size = 3 * G->maxedges - 3 * (G->edges / 2) - G->maxsize + 2;
+  unsigned char code[size];
 
   compute_dual_code(G, code);
-  fwrite(code, sizeof(unsigned char), sizeof(code), OUTFILE);
+  fwrite(code, sizeof(unsigned char), size, OUTFILE);
 }
+
 
 static void kekule_greedy(GRAPH *G, int saturated[], int face_to_extra[], EDGE *firstedge[], int *nsat) {
   register EDGE *edge;
@@ -289,7 +297,7 @@ static int kekule_augmenting(GRAPH *G, int saturated[], int face_to_extra[], int
       edge = path[end];
       switch(type[end]) {
         case TYPE_EDGE:
-          edge->matching = edge->inverse->matching = G->matching ? 1 - edge->matching : 5 - edge->matching;
+          edge->matching = edge->inverse->matching = G->matching ? 5 - edge->matching : 1 - edge->matching;
           end = edge->leftface;
           break;
         case TYPE_OUTER_LEFT:
@@ -891,7 +899,7 @@ static void add_vertex(GRAPH* G, EDGE* edge, int l) {
     new_edge->start = new_inverse->end = vertex;
     new_edge->end = new_inverse->start = new_vertex;
     new_edge->inverse = new_inverse; new_inverse->inverse = new_edge;
-    new_edge->matching = new_inverse->matching = G->matching;
+    new_edge->matching = new_inverse->matching = 2 * G->matching;
 
     /* Connect with other edges */
     new_edge->prev = temp->inverse; new_edge->prev->next = new_edge;
@@ -1206,7 +1214,7 @@ int main(int argc, char *argv[]) {
   edge->label = inverse->label = 1;
   edge->leftface = inverse->rightface = 0;
   edge->leftface = inverse->rightface = 1;
-  edge->matching = inverse->matching = G->matching;
+  edge->matching = inverse->matching = 2 * G->matching;
 
   G->size = 2;
   G->edges = 2;
