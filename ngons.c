@@ -44,7 +44,7 @@ typedef struct {
 
 #define NUMBER(G, numberings, numb, i) numberings[numb * G->boundary_length + i]
 
-static int DUALS, KEKULE, OUTPUT;
+static int DUALS, KEKULE, OUTPUT, BIPARTITE;
 
 static unsigned long int global_count, dual_count, labeled_count;
 
@@ -194,9 +194,9 @@ static void compute_dual_code(GRAPH* G, unsigned char *code) {
   }
 }
 
-static void write_header() {
+static void write_header(FILE *fp) {
   unsigned char header[15] = ">>planar_code<<";
-  fwrite(header, sizeof(unsigned char), 15, OUTFILE);
+  fwrite(header, sizeof(unsigned char), 15, fp);
 }
 
 static void write_planar_code(GRAPH *G) {
@@ -213,6 +213,32 @@ static void write_dual_planar_code(GRAPH *G) {
 
   compute_dual_code(G, code);
   fwrite(code, sizeof(unsigned char), size, OUTFILE);
+}
+
+void save_planar_code(GRAPH *G, const char *fname) {
+  int size = G->size + G->edges + 1;
+  unsigned char code[size];
+  FILE *fp;
+
+  compute_code(G, code);
+
+  fp = fopen(fname, "w");
+  write_header(fp);
+  fwrite(code, sizeof(unsigned char), size, fp);
+  fclose(fp);
+}
+
+void save_dual_planar_code(GRAPH *G, const char *fname) {
+  int size = 3 * G->maxedges - 3 * (G->edges / 2) - G->maxsize + 2;
+  unsigned char code[size];
+  FILE *fp;
+
+  compute_dual_code(G, code);
+
+  fp = fopen(fname, "w");
+  write_header(fp);
+  fwrite(code, sizeof(unsigned char), size, fp);
+  fclose(fp);
 }
 
 
@@ -315,12 +341,12 @@ static int kekule_augmenting(GRAPH *G, int saturated[], int face_to_extra[], int
           end = edge->leftface;
           break;
         case TYPE_BORDER_LEFT:
-          end = face_to_extra[edge->leftface];
+          end = face_to_extra[end];
           saturated[end] = 3 - saturated[end];
           end = edge->inverse->next->leftface;
           break;
         case TYPE_BORDER_RIGHT:
-          end = face_to_extra[end];
+          end = face_to_extra[edge->leftface];
           saturated[end] = 3 - saturated[end];
           end = edge->leftface;
           break;
@@ -440,11 +466,54 @@ static int kekule_add_extra_left(GRAPH *G, int saturated[], int face_to_extra[],
   return 0;
 }
 
+static int kekule_step(GRAPH *G, int saturated[], int face_to_extra[], EDGE *firstedge[], int *nsat, int distance[], EDGE *path[], int type[], int list[], int *listsize, int face) {
+  EDGE *edge = firstedge[face];
+
+  if (face >= G->faces) {
+
+    /* extra */
+    if (
+      kekule_add_outer_left(G, saturated, face_to_extra, list, listsize, distance, path, type, face, edge) ||
+      kekule_add_outer_right(G, saturated, face_to_extra, list, listsize, distance, path, type, face, edge)
+    ) {
+      *nsat += 2;
+      return 1;
+    }
+
+  } else if (!edge->label) {
+
+    /* inner face */
+    if (
+      kekule_add_edge(G, saturated, face_to_extra, list, listsize, distance, path, type, edge) ||
+      kekule_add_edge(G, saturated, face_to_extra, list, listsize, distance, path, type, edge->prev->inverse) ||
+      kekule_add_edge(G, saturated, face_to_extra, list, listsize, distance, path, type, edge->inverse->next)
+    ) {
+      *nsat += 2;
+      return 1;
+    }
+
+  } else {
+
+    /* outer face */
+    if (
+      kekule_add_edge(G, saturated, face_to_extra, list, listsize, distance, path, type, edge) ||
+      kekule_add_extra_right(G, saturated, face_to_extra, list, listsize, distance, path, type, edge) ||
+      kekule_add_extra_left(G, saturated, face_to_extra, list, listsize, distance, path, type, edge->prev->inverse)
+    ) {
+      *nsat += 2;
+      return 1;
+    }
+
+  }
+
+  return 0;
+}
+
 static void kekule_bipartite(GRAPH *G, int saturated[], int face_to_extra[], EDGE *firstedge[], int *nsat) {
   int start, i;
-  int list[G->faces + G->boundary_length], listsize, index, face;
+  int list[G->faces + G->boundary_length], listsize, index;
   int distance[G->faces + G->boundary_length], type[G->faces + G->boundary_length];
-  EDGE *path[G->faces + G->boundary_length], *edge;
+  EDGE *path[G->faces + G->boundary_length];
 
   for (start = 0; start < G->faces + G->boundary_length; start++) {
     if (!saturated[start]) {
@@ -455,59 +524,32 @@ static void kekule_bipartite(GRAPH *G, int saturated[], int face_to_extra[], EDG
       listsize = 1;
 
       for (index = 0; index < listsize; index++) {
-        face = list[index];
-        edge = firstedge[face];
-
-        if (face >= G->faces) {
-
-          /* extra */
-          if (kekule_add_outer_left(G, saturated, face_to_extra, list, &listsize, distance, path, type, face, edge))
-            { *nsat += 2; continue; }
-          if (kekule_add_outer_right(G, saturated, face_to_extra, list, &listsize, distance, path, type, face, edge))
-            { *nsat += 2; continue; }
-
-        } else if (!edge->label) {
-
-          /* inner face */
-          if (kekule_add_edge(G, saturated, face_to_extra, list, &listsize, distance, path, type, edge))
-            { *nsat += 2; continue; }
-          if (kekule_add_edge(G, saturated, face_to_extra, list, &listsize, distance, path, type, edge->prev->inverse))
-            { *nsat += 2; continue; }
-          if (kekule_add_edge(G, saturated, face_to_extra, list, &listsize, distance, path, type, edge->inverse->next))
-            { *nsat += 2; continue; }
-
-        } else {
-
-          /* outer face */
-          if (kekule_add_edge(G, saturated, face_to_extra, list, &listsize, distance, path, type, edge))
-            { *nsat += 2; continue; }
-          if (kekule_add_extra_right(G, saturated, face_to_extra, list, &listsize, distance, path, type, edge))
-            { *nsat += 2; continue; }
-          if (kekule_add_extra_left(G, saturated, face_to_extra, list, &listsize, distance, path, type, edge->prev->inverse))
-            { *nsat += 2; continue; }
-
-        }
+        if (kekule_step(G, saturated, face_to_extra, firstedge, nsat, distance, path, type, list, &listsize, list[index])) break;
       }
     }
   }
 }
 
 static int kekule(GRAPH *G) {
-  int i, nsat = 0;
-  int saturated[G->faces + G->boundary_length], face_to_extra[G->faces];
-  EDGE *firstedge[G->faces + G->boundary_length];
+  int i, nsat = 0, total = G->faces + G->boundary_length;
+  int saturated[total], face_to_extra[G->faces];
+  EDGE *firstedge[total];
 
   G->matching = 1 - G->matching;
 
-  for (i = 0; i < G->faces + G->boundary_length; i++) saturated[i] = 0;
+  for (i = 0; i < total; i++) saturated[i] = 0;
 
   kekule_greedy(G, saturated, face_to_extra, firstedge, &nsat);
 
-  if (nsat == G->faces + G->boundary_length) return 1;
+  if (nsat == total) return 1;
 
   kekule_bipartite(G, saturated, face_to_extra, firstedge, &nsat);
 
-  return (nsat == G->faces + G->boundary_length);
+  if (nsat == total) return 1;
+
+  if (BIPARTITE) return 0;
+
+  return 0;
 }
 
 
@@ -1130,6 +1172,7 @@ int main(int argc, char *argv[]) {
   KEKULE = 0;
   OUTPUT = 0;
   OUTFILE = stdout;
+  BIPARTITE = 1;
 
   /* Process command line options */
   static struct option long_options[] = {
@@ -1174,9 +1217,8 @@ int main(int argc, char *argv[]) {
   G->maxdeg = G->maxsize = G->maxedges = 0;
   for (i = optind; i < argc; i++) {
     sscanf(argv[i], "%d:%d", &face, &count);
-    if (face > G->maxdeg) {
-      G->maxdeg = face;
-    }
+    if (face > G->maxdeg) G->maxdeg = face;
+    if (face % 2) BIPARTITE = 0;
     G->maxsize += count;
     G->maxedges += count * face;
   }
@@ -1248,7 +1290,7 @@ int main(int argc, char *argv[]) {
   filtered_numbs = malloc(2 * G->maxedges * sizeof(int));
 
   /* Start Construction */
-  if (OUTPUT) write_header();
+  if (OUTPUT) write_header(OUTFILE);
   start = clock();
   if (G->size == G->maxsize) {
     dual_count = 1;
@@ -1271,15 +1313,15 @@ int main(int argc, char *argv[]) {
             cpu_time, dual_count / cpu_time);
   } else {
     if (KEKULE) {
-      fprintf(stderr, "kekule graphs:  %ld\n", global_count);
+      fprintf(stderr, "kekulean graphs: %ld\n", global_count);
     } else {
-      fprintf(stderr, "graphs:         %ld\n", global_count);
+      fprintf(stderr, "graphs:          %ld\n", global_count);
     }
-    fprintf(stderr, "inner duals:    %ld (%ld trivial)\n"
-                    "vertex-labeled: %ld (%ld trivial)\n\n",
+    fprintf(stderr, "inner duals:     %ld (%ld trivial)\n"
+                    "vertex-labeled:  %ld (%ld trivial)\n\n",
             dual_count, dual_trivial, labeled_count, labeled_trivial);
-    fprintf(stderr, "CPU time:       %.2fs\n"
-                    "graphs/s:       %.0f\n",
+    fprintf(stderr, "CPU time:        %.2fs\n"
+                    "graphs/s:        %.0f\n",
             cpu_time, global_count / cpu_time);
   }
 
