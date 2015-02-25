@@ -54,6 +54,9 @@ static FILE *OUTFILE;
 
 static int *vertexcode, *anglecode, *labeled, *restlabel, *filtered_numbs;
 
+static int *saturated, *face_to_extra, *distance, *type;
+static EDGE **firstedge, **path;
+
 static void compute_code(GRAPH *G, unsigned char *code) {
   register EDGE *run;
   register int vertex;
@@ -216,7 +219,7 @@ static void write_dual_planar_code(GRAPH *G) {
 }
 
 
-static void kekule_greedy(GRAPH *G, int saturated[], int face_to_extra[], EDGE *firstedge[], int *nsat) {
+static void kekule_greedy(GRAPH *G, int *nsat) {
   register EDGE *edge;
   int i, vertex, left, right, extra = G->faces;
 
@@ -288,7 +291,7 @@ static void kekule_greedy(GRAPH *G, int saturated[], int face_to_extra[], EDGE *
 #define TYPE_BORDER_LEFT 5
 #define TYPE_BORDER_RIGHT 6
 
-static int kekule_augmenting(GRAPH *G, int saturated[], int face_to_extra[], int distance[], EDGE *path[], int type[], int end) {
+static int kekule_augmenting(GRAPH *G, int end) {
   EDGE *edge;
 
   if (!saturated[end]) {
@@ -333,7 +336,7 @@ static int kekule_augmenting(GRAPH *G, int saturated[], int face_to_extra[], int
   }
 }
 
-static int kekule_add_edge(GRAPH *G, int saturated[], int face_to_extra[], int list[], int *listsize, int distance[], EDGE *path[], int type[], EDGE *edge) {
+static int kekule_add_edge(GRAPH *G, int list[], int *listsize, EDGE *edge) {
   int previous = edge->leftface;
   int end = edge->rightface;
 
@@ -349,7 +352,7 @@ static int kekule_add_edge(GRAPH *G, int saturated[], int face_to_extra[], int l
   return 0;
 }
 
-static int kekule_add_outer_left(GRAPH *G, int saturated[], int face_to_extra[], int list[], int *listsize, int distance[], EDGE *path[], int type[], int previous, EDGE *edge) {
+static int kekule_add_outer_left(GRAPH *G, int list[], int *listsize, int previous, EDGE *edge) {
   int end = edge->leftface;
 
   if (distance[end] == -1 && saturated[previous] % 2 == distance[previous] % 2) {
@@ -364,7 +367,7 @@ static int kekule_add_outer_left(GRAPH *G, int saturated[], int face_to_extra[],
   return 0;
 }
 
-static int kekule_add_outer_right(GRAPH *G, int saturated[], int face_to_extra[], int list[], int *listsize, int distance[], EDGE *path[], int type[], int previous, EDGE *edge) {
+static int kekule_add_outer_right(GRAPH *G, int list[], int *listsize, int previous, EDGE *edge) {
   int end = edge->inverse->next->leftface;
 
   if (distance[end] == -1 && saturated[previous] / 2 == distance[previous] % 2) {
@@ -379,7 +382,7 @@ static int kekule_add_outer_right(GRAPH *G, int saturated[], int face_to_extra[]
   return 0;
 }
 
-static int kekule_add_extra_right(GRAPH *G, int saturated[], int face_to_extra[], int list[], int *listsize, int distance[], EDGE *path[], int type[], EDGE *edge) {
+static int kekule_add_extra_right(GRAPH *G, int list[], int *listsize, EDGE *edge) {
   int previous = edge->leftface;
   int extra = face_to_extra[previous];
 
@@ -410,7 +413,7 @@ static int kekule_add_extra_right(GRAPH *G, int saturated[], int face_to_extra[]
   return 0;
 }
 
-static int kekule_add_extra_left(GRAPH *G, int saturated[], int face_to_extra[], int list[], int *listsize, int distance[], EDGE *path[], int type[], EDGE *edge) {
+static int kekule_add_extra_left(GRAPH *G, int list[], int *listsize, EDGE *edge) {
   int previous = edge->inverse->next->leftface;
   int end = edge->leftface;
   int extra = face_to_extra[end];
@@ -442,15 +445,15 @@ static int kekule_add_extra_left(GRAPH *G, int saturated[], int face_to_extra[],
   return 0;
 }
 
-static int kekule_step(GRAPH *G, int saturated[], int face_to_extra[], EDGE *firstedge[], int *nsat, int distance[], EDGE *path[], int type[], int list[], int *listsize, int face) {
+static int kekule_step(GRAPH *G, int *nsat, int list[], int *listsize, int face) {
   EDGE *edge = firstedge[face];
 
   if (face >= G->faces) {
 
     /* extra */
     if (
-      (kekule_add_outer_left(G, saturated, face_to_extra, list, listsize, distance, path, type, face, edge) && kekule_augmenting(G, saturated, face_to_extra, distance, path, type, list[*listsize - 1])) ||
-      (kekule_add_outer_right(G, saturated, face_to_extra, list, listsize, distance, path, type, face, edge) && kekule_augmenting(G, saturated, face_to_extra, distance, path, type, list[*listsize - 1]))
+      (kekule_add_outer_left(G, list, listsize, face, edge) && kekule_augmenting(G, list[*listsize - 1])) ||
+      (kekule_add_outer_right(G, list, listsize, face, edge) && kekule_augmenting(G, list[*listsize - 1]))
     ) {
       *nsat += 2;
       return 1;
@@ -460,9 +463,9 @@ static int kekule_step(GRAPH *G, int saturated[], int face_to_extra[], EDGE *fir
 
     /* inner face */
     if (
-      (kekule_add_edge(G, saturated, face_to_extra, list, listsize, distance, path, type, edge) && kekule_augmenting(G, saturated, face_to_extra, distance, path, type, list[*listsize - 1])) ||
-      (kekule_add_edge(G, saturated, face_to_extra, list, listsize, distance, path, type, edge->prev->inverse) && kekule_augmenting(G, saturated, face_to_extra, distance, path, type, list[*listsize - 1])) ||
-      (kekule_add_edge(G, saturated, face_to_extra, list, listsize, distance, path, type, edge->inverse->next) && kekule_augmenting(G, saturated, face_to_extra, distance, path, type, list[*listsize - 1]))
+      (kekule_add_edge(G, list, listsize, edge) && kekule_augmenting(G, list[*listsize - 1])) ||
+      (kekule_add_edge(G, list, listsize, edge->prev->inverse) && kekule_augmenting(G, list[*listsize - 1])) ||
+      (kekule_add_edge(G, list, listsize, edge->inverse->next) && kekule_augmenting(G, list[*listsize - 1]))
     ) {
       *nsat += 2;
       return 1;
@@ -472,9 +475,9 @@ static int kekule_step(GRAPH *G, int saturated[], int face_to_extra[], EDGE *fir
 
     /* outer face */
     if (
-      (kekule_add_edge(G, saturated, face_to_extra, list, listsize, distance, path, type, edge) && kekule_augmenting(G, saturated, face_to_extra, distance, path, type, list[*listsize - 1])) ||
-      (kekule_add_extra_right(G, saturated, face_to_extra, list, listsize, distance, path, type, edge) && kekule_augmenting(G, saturated, face_to_extra, distance, path, type, list[*listsize - 1])) ||
-      (kekule_add_extra_left(G, saturated, face_to_extra, list, listsize, distance, path, type, edge->prev->inverse) && kekule_augmenting(G, saturated, face_to_extra, distance, path, type, list[*listsize - 1]))
+      (kekule_add_edge(G, list, listsize, edge) && kekule_augmenting(G, list[*listsize - 1])) ||
+      (kekule_add_extra_right(G, list, listsize, edge) && kekule_augmenting(G, list[*listsize - 1])) ||
+      (kekule_add_extra_left(G, list, listsize, edge->prev->inverse) && kekule_augmenting(G, list[*listsize - 1]))
     ) {
       *nsat += 2;
       return 1;
@@ -485,11 +488,9 @@ static int kekule_step(GRAPH *G, int saturated[], int face_to_extra[], EDGE *fir
   return 0;
 }
 
-static void kekule_bipartite(GRAPH *G, int saturated[], int face_to_extra[], EDGE *firstedge[], int *nsat) {
+static void kekule_bipartite(GRAPH *G, int *nsat) {
   int start, i;
   int list[G->faces + G->boundary_length], listsize, index;
-  int distance[G->faces + G->boundary_length], type[G->faces + G->boundary_length];
-  EDGE *path[G->faces + G->boundary_length];
 
   for (start = 0; start < G->faces + G->boundary_length; start++) {
     if (!saturated[start]) {
@@ -500,21 +501,21 @@ static void kekule_bipartite(GRAPH *G, int saturated[], int face_to_extra[], EDG
       listsize = 1;
 
       for (index = 0; index < listsize; index++) {
-        if (kekule_step(G, saturated, face_to_extra, firstedge, nsat, distance, path, type, list, &listsize, list[index])) break;
+        if (kekule_step(G, nsat, list, &listsize, list[index])) break;
       }
     }
   }
 }
 
-static int kekule_exhaustive_step(GRAPH *G, int saturated[], int face_to_extra[], EDGE *firstedge[], int *nsat, int distance[], EDGE *path[], int type[], int face);
+static int kekule_exhaustive_step(GRAPH *G, int *nsat, int face);
 
-static int kekule_exhaustive_augmenting(GRAPH *G, int saturated[], int face_to_extra[], EDGE *firstedge[], int *nsat, int distance[], EDGE *path[], int type[], int end, int *success) {
+static int kekule_exhaustive_augmenting(GRAPH *G, int *nsat, int end, int *success) {
   *success = 0;
-  if (kekule_augmenting(G, saturated, face_to_extra, distance, path, type, end)) {
+  if (kekule_augmenting(G, end)) {
     *nsat += 2;
     distance[end] = -1;
     return 1;
-  } else if (kekule_exhaustive_step(G, saturated, face_to_extra, firstedge, nsat, distance, path, type, end)) {
+  } else if (kekule_exhaustive_step(G, nsat, end)) {
     distance[end] = -1;
     return 1;
   } else {
@@ -523,7 +524,7 @@ static int kekule_exhaustive_augmenting(GRAPH *G, int saturated[], int face_to_e
   }
 }
 
-static int kekule_exhaustive_step(GRAPH *G, int saturated[], int face_to_extra[], EDGE *firstedge[], int *nsat, int distance[], EDGE *path[], int type[], int face) {
+static int kekule_exhaustive_step(GRAPH *G, int *nsat, int face) {
   EDGE *edge = firstedge[face];
   int end, success = 0;
 
@@ -531,26 +532,26 @@ static int kekule_exhaustive_step(GRAPH *G, int saturated[], int face_to_extra[]
 
     /* extra */
     if (
-      (kekule_add_outer_left(G, saturated, face_to_extra, &end, &success, distance, path, type, face, edge) && kekule_exhaustive_augmenting(G, saturated, face_to_extra, firstedge, nsat, distance, path, type, end, &success)) ||
-      (kekule_add_outer_right(G, saturated, face_to_extra, &end, &success, distance, path, type, face, edge) && kekule_exhaustive_augmenting(G, saturated, face_to_extra, firstedge, nsat, distance, path, type, end, &success))
+      (kekule_add_outer_left(G, &end, &success, face, edge) && kekule_exhaustive_augmenting(G, nsat, end, &success)) ||
+      (kekule_add_outer_right(G, &end, &success, face, edge) && kekule_exhaustive_augmenting(G, nsat, end, &success))
     ) return 1;
 
   } else if (!edge->label) {
 
     /* inner face */
     if (
-      (kekule_add_edge(G, saturated, face_to_extra, &end, &success, distance, path, type, edge) && kekule_exhaustive_augmenting(G, saturated, face_to_extra, firstedge, nsat, distance, path, type, end, &success)) ||
-      (kekule_add_edge(G, saturated, face_to_extra, &end, &success, distance, path, type, edge->prev->inverse) && kekule_exhaustive_augmenting(G, saturated, face_to_extra, firstedge, nsat, distance, path, type, end, &success)) ||
-      (kekule_add_edge(G, saturated, face_to_extra, &end, &success, distance, path, type, edge->inverse->next) && kekule_exhaustive_augmenting(G, saturated, face_to_extra, firstedge, nsat, distance, path, type, end, &success))
+      (kekule_add_edge(G, &end, &success, edge) && kekule_exhaustive_augmenting(G, nsat, end, &success)) ||
+      (kekule_add_edge(G, &end, &success, edge->prev->inverse) && kekule_exhaustive_augmenting(G, nsat, end, &success)) ||
+      (kekule_add_edge(G, &end, &success, edge->inverse->next) && kekule_exhaustive_augmenting(G, nsat, end, &success))
     ) return 1;
 
   } else {
 
     /* outer face */
     if (
-      (kekule_add_edge(G, saturated, face_to_extra, &end, &success, distance, path, type, edge) && kekule_exhaustive_augmenting(G, saturated, face_to_extra, firstedge, nsat, distance, path, type, end, &success)) ||
-      (kekule_add_extra_right(G, saturated, face_to_extra, &end, &success, distance, path, type, edge) && kekule_exhaustive_augmenting(G, saturated, face_to_extra, firstedge, nsat, distance, path, type, end, &success)) ||
-      (kekule_add_extra_left(G, saturated, face_to_extra, &end, &success, distance, path, type, edge->prev->inverse) && kekule_exhaustive_augmenting(G, saturated, face_to_extra, firstedge, nsat, distance, path, type, end, &success))
+      (kekule_add_edge(G, &end, &success, edge) && kekule_exhaustive_augmenting(G, nsat, end, &success)) ||
+      (kekule_add_extra_right(G, &end, &success, edge) && kekule_exhaustive_augmenting(G, nsat, end, &success)) ||
+      (kekule_add_extra_left(G, &end, &success, edge->prev->inverse) && kekule_exhaustive_augmenting(G, nsat, end, &success))
     ) return 1;
 
   }
@@ -558,10 +559,8 @@ static int kekule_exhaustive_step(GRAPH *G, int saturated[], int face_to_extra[]
   return 0;
 }
 
-static void kekule_exhaustive(GRAPH *G, int saturated[], int face_to_extra[], EDGE *firstedge[], int *nsat) {
+static void kekule_exhaustive(GRAPH *G, int *nsat) {
   int start, i;
-  int distance[G->faces + G->boundary_length], type[G->faces + G->boundary_length];
-  EDGE *path[G->faces + G->boundary_length];
 
   for (i = 0; i < G->faces + G->boundary_length; i++) distance[i] = -1;
 
@@ -569,7 +568,7 @@ static void kekule_exhaustive(GRAPH *G, int saturated[], int face_to_extra[], ED
     if (!saturated[start]) {
       distance[start] = 0;
 
-      kekule_exhaustive_step(G, saturated, face_to_extra, firstedge, nsat, distance, path, type, start);
+      kekule_exhaustive_step(G, nsat, start);
 
       distance[start] = -1;
     }
@@ -578,24 +577,22 @@ static void kekule_exhaustive(GRAPH *G, int saturated[], int face_to_extra[], ED
 
 static int kekule(GRAPH *G) {
   int i, nsat = 0, total = G->faces + G->boundary_length;
-  int saturated[total], face_to_extra[G->faces];
-  EDGE *firstedge[total];
 
   G->matching = 1 - G->matching;
 
   for (i = 0; i < total; i++) saturated[i] = 0;
 
-  kekule_greedy(G, saturated, face_to_extra, firstedge, &nsat);
+  kekule_greedy(G, &nsat);
 
   if (nsat == total) return 1;
 
-  kekule_bipartite(G, saturated, face_to_extra, firstedge, &nsat);
+  kekule_bipartite(G, &nsat);
 
   if (nsat == total) return 1;
 
   if (BIPARTITE) return 0;
 
-  kekule_exhaustive(G, saturated, face_to_extra, firstedge, &nsat);
+  kekule_exhaustive(G, &nsat);
 
   return (nsat == total);
 }
@@ -1329,13 +1326,23 @@ int main(int argc, char *argv[]) {
   /* Initialize global variables */
   global_count = dual_count = labeled_count = 0;
   dual_trivial = labeled_trivial = 0;
-  vertexcode = malloc(G->maxedges * sizeof(int));
-  anglecode = malloc(G->maxedges * sizeof(int));
-  for (i = 0; i < G->maxedges; i++) anglecode[i] = 0;
-  labeled = malloc(G->maxsize * sizeof(int));
-  for (i = 0; i < G->size; i++) labeled[i] = 0;
-  restlabel = malloc(G->maxsize * sizeof(int));
-  filtered_numbs = malloc(2 * G->maxedges * sizeof(int));
+  if (!DUALS) {
+    vertexcode = malloc(G->maxedges * sizeof(int));
+    anglecode = malloc(G->maxedges * sizeof(int));
+    for (i = 0; i < G->maxedges; i++) anglecode[i] = 0;
+    labeled = malloc(G->maxsize * sizeof(int));
+    for (i = 0; i < G->size; i++) labeled[i] = 0;
+    restlabel = malloc(G->maxsize * sizeof(int));
+    filtered_numbs = malloc(2 * G->maxedges * sizeof(int));
+  }
+  if (KEKULE) {
+    face_to_extra = malloc((G->maxedges / 2) * sizeof(int));
+    saturated = malloc(G->maxedges * sizeof(int));
+    distance = malloc(G->maxedges * sizeof(int));
+    type = malloc(G->maxedges * sizeof(int));
+    firstedge = malloc(G->maxedges * sizeof(EDGE*));
+    path = malloc(G->maxedges * sizeof(EDGE*));
+  }
 
   /* Start Construction */
   if (OUTPUT) write_header(OUTFILE);
@@ -1374,6 +1381,16 @@ int main(int argc, char *argv[]) {
   }
 
   /* Free memory */
+  if (!DUALS) {
+    free(vertexcode); free(anglecode);
+    free(labeled); free(restlabel);
+    free(filtered_numbs);
+  }
+  if (KEKULE) {
+    free(saturated); free(face_to_extra);
+    free(distance); free(type);
+    free(firstedge); free(path);
+  }
   free(edge); free(inverse);
   free(G->deg); free(G->outer); free(G->label);
   free(G->counter); free(G->firstedge);
