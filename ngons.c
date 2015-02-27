@@ -586,13 +586,11 @@ static int kekule(GRAPH *G) {
 
   if (nsat == total) return 1;
 
-  kekule_bipartite(G, &nsat);
-
-  if (nsat == total) return 1;
-
-  if (BIPARTITE) return 0;
-
-  kekule_exhaustive(G, &nsat);
+  if (BIPARTITE) {
+    kekule_bipartite(G, &nsat);
+  } else {
+    kekule_exhaustive(G, &nsat);
+  }
 
   return (nsat == total);
 }
