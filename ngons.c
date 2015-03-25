@@ -1358,6 +1358,9 @@ int main(int argc, char *argv[]) {
   end = clock();
   cpu_time = ((double) (end - start)) / CLOCKS_PER_SEC;
 
+  /* Print results */
+  for (i = 0; i < argc; i++) fprintf(stderr, "%s ", argv[i]);
+  fprintf(stderr, "\n\n");
   if (DUALS) {
     fprintf(stderr, "inner duals:    %ld (%ld trivial)\n\n",
             dual_count, dual_trivial);
