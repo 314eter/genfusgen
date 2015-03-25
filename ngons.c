@@ -46,6 +46,8 @@ typedef struct {
 
 static int DUALS, KEKULE, OUTPUT, BIPARTITE;
 
+static unsigned long int MODULO, INDEX;
+
 static unsigned long int global_count, dual_count, labeled_count;
 
 static unsigned long int dual_trivial, labeled_trivial;
@@ -1145,11 +1147,13 @@ static void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nb
           if (!cont) {
             dual_count++;
             if (new_nbtot == 1) dual_trivial++;
-            if (DUALS) {
-              if (OUTPUT) write_planar_code(G);
-            } else {
-              /* Label vertices, then angles, and output dual graphs */
-              label_vertices(G, facecount, new_numberings, new_nbtot, new_nbop, 0);
+            if (MODULO ? (dual_count % MODULO == INDEX) : (!INDEX || dual_count == INDEX)) {
+              if (DUALS) {
+                if (OUTPUT) write_planar_code(G);
+              } else {
+                /* Label vertices, then angles, and output dual graphs */
+                label_vertices(G, facecount, new_numberings, new_nbtot, new_nbop, 0);
+              }
             }
           }
         } else {
@@ -1198,16 +1202,20 @@ static void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nb
 
 
 static void write_help() {
-  fprintf(stdout, "Usage: ngons [-p] [-d] [-o OUTFILE] SPECS\n\n");
-  fprintf(stdout, " -p\twrite planar code to stdout or outfile\n");
-  fprintf(stdout, " -d\tgenerate inner duals\n");
-  fprintf(stdout, " -o\twrite to outfile instead of stdout\n");
-  fprintf(stdout, " SPECS\tsequence of pairs \"n:m\", meaning there are m n-gons\n");
+  fprintf(stdout, "Usage: ngons [-p] [-d] [-o OUTFILE] [-m M] [-i I] SPECS\n\n");
+  fprintf(stdout, " -p,--planarcode write planar code to stdout or outfile\n");
+  fprintf(stdout, " -d,--duals      generate inner duals\n");
+  fprintf(stdout, " -k,--kekule     filter kekule structures\n");
+  fprintf(stdout, " -o,--output     write to OUTFILE instead of stdout\n");
+  fprintf(stdout, " -m,--modulo\n");
+  fprintf(stdout, " -i,--index      only use inner dual with index I (modulo M)\n");
+  fprintf(stdout, " SPECS           sequence of pairs \"n:m\", meaning there are m n-gons\n");
 }
 
 
 int main(int argc, char *argv[]) {
   int c, option_index;
+  char *charp;
   clock_t start, end;
   double cpu_time;
 
@@ -1216,18 +1224,22 @@ int main(int argc, char *argv[]) {
   OUTPUT = 0;
   OUTFILE = stdout;
   BIPARTITE = 1;
+  MODULO = 0;
+  INDEX = 0;
 
   /* Process command line options */
   static struct option long_options[] = {
-    {"planar_code", no_argument,       0, 'p'},
+    {"planarcode", no_argument,       0, 'p'},
     {"duals",       no_argument,       0, 'd'},
     {"kekule",      no_argument,       0, 'k'},
     {"output",      required_argument, 0, 'o'},
+    {"modulo",      required_argument, 0, 'm'},
+    {"index",       required_argument, 0, 'i'},
     {"help",        no_argument,       0, 'h'},
   };
 
   while (1) {
-    c = getopt_long(argc, argv, "pdko:h", long_options, &option_index);
+    c = getopt_long(argc, argv, "pdko:m:i:h", long_options, &option_index);
     if (c == -1) break;
     switch (c) {
       case 'p':
@@ -1242,10 +1254,21 @@ int main(int argc, char *argv[]) {
       case 'o':
         OUTFILE = fopen(optarg, "w");
         break;
+      case 'm':
+        MODULO = strtoul(optarg, &charp, 10);
+        break;
+      case 'i':
+        INDEX = strtoul(optarg, &charp, 10);
+        break;
       default:
         write_help();
         return 1;
     }
+  }
+
+  if (MODULO && INDEX >= MODULO) {
+    fprintf(stderr, "Index %ld is impossible modulo %ld.\n", INDEX, MODULO);
+    return 1;
   }
 
   if (optind == argc) {
