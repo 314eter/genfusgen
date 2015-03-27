@@ -46,7 +46,7 @@ typedef struct {
 
 static int DUALS, KEKULE, OUTPUT, BIPARTITE;
 
-static unsigned long int MODULO, INDEX;
+static unsigned long int MODULO, INDEX, dual_index;
 
 static unsigned long int global_count, dual_count, labeled_count;
 
@@ -1145,9 +1145,11 @@ static void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nb
             }
           }
           if (!cont) {
-            dual_count++;
-            if (new_nbtot == 1) dual_trivial++;
-            if (MODULO ? (dual_count % MODULO == INDEX) : (!INDEX || dual_count == INDEX)) {
+            dual_index++;
+            if (MODULO && dual_index == MODULO) dual_index = 0;
+            if ((!MODULO && !INDEX) || dual_index == INDEX) {
+              dual_count++;
+              if (new_nbtot == 1) dual_trivial++;
               if (DUALS) {
                 if (OUTPUT) write_planar_code(G);
               } else {
@@ -1256,9 +1258,21 @@ int main(int argc, char *argv[]) {
         break;
       case 'm':
         MODULO = strtoul(optarg, &charp, 10);
+        if (*charp != '\0') {
+          fprintf(stderr, "\"%s\" is no numeric value.\n", optarg);
+          return 1;
+        }
+        if (MODULO == 1) {
+          fprintf(stderr, "Modulo 1 is impossible.\n");
+          return 1;
+        }
         break;
       case 'i':
         INDEX = strtoul(optarg, &charp, 10);
+        if (*charp != '\0') {
+          fprintf(stderr, "\"%s\" is no numeric value.\n", optarg);
+          return 1;
+        }
         break;
       default:
         write_help();
@@ -1345,7 +1359,7 @@ int main(int argc, char *argv[]) {
   NUMBER(G, numberings, 3, 0) = inverse; NUMBER(G, numberings, 3, 1) = edge;
 
   /* Initialize global variables */
-  global_count = dual_count = labeled_count = 0;
+  global_count = dual_count = dual_index = labeled_count = 0;
   dual_trivial = labeled_trivial = 0;
   if (!DUALS) {
     vertexcode = malloc(G->maxedges * sizeof(int));
