@@ -46,6 +46,8 @@ typedef struct {
 
 static int DUALS, KEKULE, FIX, OUTPUT, BIPARTITE;
 
+static int SPLIT_SIZE;
+
 static unsigned long int MODULO, INDEX, dual_index;
 
 static unsigned long int global_count, dual_count, labeled_count;
@@ -1173,20 +1175,25 @@ static void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nb
 
       /* Check wether new vertex is canonical */
       if (canon(G, new_numberings, &new_nbtot, &new_nbop)) {
-        if (G->size == G->maxsize) {
-          cont = 0;
-          if (G->boundary_length == 2) {
-            temp = new_numberings[0];
-            if (G->deg[temp->start] == G->deg[temp->end]) {
-              if (facecount[G->deg[temp->start] + 1] == 2) cont = 1;
-            } else {
-              if (facecount[G->deg[temp->start] + 1] && facecount[G->deg[temp->end] + 1]) cont = 1;
+        cont = 0;
+        if (MODULO && G->size == SPLIT_SIZE) {
+          dual_index++;
+          if (dual_index == MODULO) dual_index = 0;
+          if (dual_index != INDEX) cont = 1;
+        }
+
+        if (!cont) {
+          if (G->size == G->maxsize) {
+            cont = 0;
+            if (G->boundary_length == 2) {
+              temp = new_numberings[0];
+              if (G->deg[temp->start] == G->deg[temp->end]) {
+                if (facecount[G->deg[temp->start] + 1] == 2) cont = 1;
+              } else {
+                if (facecount[G->deg[temp->start] + 1] && facecount[G->deg[temp->end] + 1]) cont = 1;
+              }
             }
-          }
-          if (!cont) {
-            dual_index++;
-            if (MODULO && dual_index == MODULO) dual_index = 0;
-            if ((!MODULO && !INDEX) || dual_index == INDEX) {
+            if (!cont) {
               dual_count++;
               if (new_nbtot == 1) dual_trivial++;
               if (DUALS) {
@@ -1196,10 +1203,10 @@ static void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nb
                 label_vertices(G, facecount, new_numberings, new_nbtot, new_nbop, 0);
               }
             }
+          } else {
+            /* Construct descendants */
+            construct_graphs(G, facecount, new_numberings, new_nbtot, new_nbop);
           }
-        } else {
-          /* Construct descendants */
-          construct_graphs(G, facecount, new_numberings, new_nbtot, new_nbop);
         }
       }
 
@@ -1283,7 +1290,7 @@ int main(int argc, char *argv[]) {
   };
 
   while (1) {
-    c = getopt_long(argc, argv, "pdkfo:m:i:h", long_options, &option_index);
+    c = getopt_long(argc, argv, "pdkfo:m:i:s:h", long_options, &option_index);
     if (c == -1) break;
     switch (c) {
       case 'p':
@@ -1311,9 +1318,18 @@ int main(int argc, char *argv[]) {
           fprintf(stderr, "Modulo 1 is impossible.\n");
           return 1;
         }
+        dual_index = 0;
+        SPLIT_SIZE = (MODULO > 20) ? ((MODULO > 100) ? 14 : 13) : 12;
         break;
       case 'i':
         INDEX = strtoul(optarg, &charp, 10);
+        if (*charp != '\0') {
+          fprintf(stderr, "\"%s\" is no numeric value.\n", optarg);
+          return 1;
+        }
+        break;
+      case 's':
+        SPLIT_SIZE = strtoul(optarg, &charp, 10);
         if (*charp != '\0') {
           fprintf(stderr, "\"%s\" is no numeric value.\n", optarg);
           return 1;
@@ -1352,6 +1368,8 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "ERROR: The graph should have at least two faces.");
     return 1;
   }
+
+  if (MODULO && SPLIT_SIZE > G->maxsize) SPLIT_SIZE = G->maxsize;
 
   /* Initialize facecount */
   int facecount[G->maxdeg + 1];
