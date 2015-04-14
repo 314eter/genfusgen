@@ -1365,7 +1365,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (G->maxsize == 1) {
-    fprintf(stderr, "ERROR: The graph should have at least two faces.");
+    fprintf(stderr, "ERROR: The graph should have at least two faces.\n");
     return 1;
   }
 
