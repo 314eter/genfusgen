@@ -3,6 +3,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <time.h>
+#include <limits.h>
 
 typedef struct e {
   int start; /* start vertex of edge */
@@ -44,7 +45,7 @@ typedef struct {
 
 #define NUMBER(G, numberings, numb, i) numberings[numb * G->boundary_length + i]
 
-static int DUALS, KEKULE, FIX, OUTPUT, BIPARTITE;
+static int DUALS, REGULAR, KEKULE, FIX, OUTPUT, BIPARTITE;
 
 static int SPLIT_SIZE;
 
@@ -639,6 +640,129 @@ static int kekule(GRAPH *G) {
 }
 
 
+typedef struct re {
+  int start;
+  int end;
+
+  struct re *prev;
+  struct re *next;
+  struct re *inverse;
+} REGULAR_EDGE;
+
+static REGULAR_EDGE *regular_tiling;
+static int regular_size;
+static unsigned int regular_mark, *regular_marks;
+
+static REGULAR_EDGE *complete_regular_vertex(int n, REGULAR_EDGE *edge, int *vertex) {
+  int deg = 1;
+  REGULAR_EDGE *other = edge, *previous, *newedge, *newinverse, *extraedge, *extrainverse;
+
+  while (other->prev) {
+    other = other->prev;
+    deg++;
+  }
+
+  previous = other;
+
+  for (; deg < n; deg++) {
+    newedge = malloc(sizeof(REGULAR_EDGE));
+    newinverse = malloc(sizeof(REGULAR_EDGE));
+    newedge->inverse = newinverse; newinverse->inverse = newedge;
+    newedge->start = newinverse->end = previous->start;
+    newedge->end = newinverse->start = (*vertex)++;
+    newedge->next = previous; previous->prev = newedge;
+
+    extraedge = malloc(sizeof(REGULAR_EDGE));
+    extrainverse = malloc(sizeof(REGULAR_EDGE));
+    extraedge->inverse = extrainverse; extrainverse->inverse = extraedge;
+    extraedge->start = extrainverse->end = previous->end;
+    extraedge->end = extrainverse->start = newedge->end;
+    extraedge->prev = previous->inverse; extraedge->prev->next = extraedge;
+    extraedge->next = extrainverse->prev = 0;
+    extrainverse->next = newinverse; newinverse->prev = extrainverse;
+
+    previous = newedge;
+  }
+
+  edge->next = previous; previous->prev = edge;
+
+  extraedge = malloc(sizeof(REGULAR_EDGE));
+  extrainverse = malloc(sizeof(REGULAR_EDGE));
+  extraedge->inverse = extrainverse; extrainverse->inverse = extraedge;
+  extraedge->start = extrainverse->end = previous->end;
+  extraedge->end = extrainverse->start = edge->end;
+  extraedge->prev = previous->inverse; extraedge->prev->next = extraedge;
+  extraedge->next = extrainverse->prev = 0;
+  extrainverse->next = edge->inverse; extrainverse->next->prev = extrainverse;
+
+  return other->inverse->next;
+}
+
+static void construct_regular_tiling(int n, int radius) {
+  int vertex = 0, r, v, i;
+  REGULAR_EDGE *edge, *inverse;
+
+  /* Construct first edge */
+  edge = malloc(sizeof(REGULAR_EDGE));
+  inverse = malloc(sizeof(REGULAR_EDGE));
+  edge->inverse = inverse; inverse->inverse = edge;
+  edge->start = inverse->end = vertex++;
+  edge->end = inverse->start = vertex++;
+  edge->next = edge->prev = 0;
+  inverse->next = inverse->prev = 0;
+
+  regular_tiling = edge;
+
+  edge = complete_regular_vertex(n, edge, &vertex);
+
+  for (r = 1; r < radius; r++) {
+    v = vertex;
+    while (edge->start < v) edge = complete_regular_vertex(n, edge, &vertex);
+  }
+
+  regular_mark = 0;
+  regular_size = vertex;
+  regular_marks = malloc(regular_size * sizeof(int));
+  for (i = 0; i < regular_size; i++) regular_marks[i] = 0;
+}
+
+static int regular(GRAPH *G) {
+  int i;
+  EDGE *firstedge, *edge;
+  REGULAR_EDGE *regular_edge;
+
+  if (regular_mark >= UINT_MAX - G->maxdeg) {
+    regular_mark = 1;
+    for (i = 0; i < regular_size; i++) regular_marks[i] = 0;
+  } else {
+    regular_mark += G->maxdeg / 2 + 1;
+  }
+
+  edge = firstedge = G->firstedge[G->size - 1];
+  regular_edge = regular_tiling;
+  do {
+    if (regular_marks[regular_edge->start] == regular_mark) {
+      return 0;
+    } else if (regular_marks[regular_edge->start] > regular_mark) {
+      if (regular_marks[regular_edge->start] - regular_mark >= G->outer[edge->end]) return 0;
+      regular_marks[regular_edge->start]++;
+    } else {
+      regular_marks[regular_edge->start] = regular_mark + 1;
+    }
+
+    for (i = 0; i < edge->label; i++) {
+      regular_edge = regular_edge->next;
+      regular_marks[regular_edge->end] = regular_mark;
+    }
+
+    edge = edge->inverse->next;
+    regular_edge = regular_edge->next->inverse;
+  } while (edge != firstedge);
+
+  return 1;
+}
+
+
 static int canon_angle_labeling(GRAPH *G, EDGE **numberings, int nbop, int nbf) {
   int fn, numb, i, c;
 
@@ -687,7 +811,7 @@ static void label_angles(GRAPH* G, EDGE**numberings, int nbop, int nbf, int n) {
   }
 
   if (canon_angle_labeling(G, numberings, nbop, nbf)) {
-    if (!KEKULE || kekule(G)) {
+    if ((!REGULAR || regular(G)) && (!KEKULE || kekule(G))) {
       global_count++;
       if (OUTPUT) write_dual_planar_code(G);
     }
@@ -1253,6 +1377,7 @@ static void write_help() {
   fprintf(stdout, "Usage: ngons [-p] [-d] [-k] [-f] [-o OUTFILE] [-m M] [-i I] SPECS\n\n");
   fprintf(stdout, " -p,--planarcode write planar code to stdout or outfile\n");
   fprintf(stdout, " -d,--duals      generate inner duals\n");
+  fprintf(stdout, " -r,--regular    filter subgraphs of regular lattice\n");
   fprintf(stdout, " -k,--kekule     filter kekule structures\n");
   fprintf(stdout, " -f,--fix        fix the outer face in clockwise direction of edge (1,2)\n");
   fprintf(stdout, " -o,--output     write to OUTFILE instead of stdout\n");
@@ -1269,6 +1394,7 @@ int main(int argc, char *argv[]) {
   double cpu_time;
 
   DUALS = 0;
+  REGULAR = 0;
   KEKULE = 0;
   FIX = 0;
   OUTPUT = 0;
@@ -1281,6 +1407,7 @@ int main(int argc, char *argv[]) {
   static struct option long_options[] = {
     {"planarcode", no_argument,       0, 'p'},
     {"duals",       no_argument,       0, 'd'},
+    {"regular",     no_argument,       0, 'r'},
     {"kekule",      no_argument,       0, 'k'},
     {"fix",         no_argument,       0, 'k'},
     {"output",      required_argument, 0, 'o'},
@@ -1290,7 +1417,7 @@ int main(int argc, char *argv[]) {
   };
 
   while (1) {
-    c = getopt_long(argc, argv, "pdkfo:m:i:s:h", long_options, &option_index);
+    c = getopt_long(argc, argv, "pdrkfo:m:i:s:h", long_options, &option_index);
     if (c == -1) break;
     switch (c) {
       case 'p':
@@ -1298,6 +1425,9 @@ int main(int argc, char *argv[]) {
         break;
       case 'd':
         DUALS = 1;
+        break;
+      case 'r':
+        REGULAR = 1;
         break;
       case 'k':
         KEKULE = 1;
@@ -1362,6 +1492,11 @@ int main(int argc, char *argv[]) {
     if (face % 2) BIPARTITE = 0;
     G->maxsize += count;
     G->maxedges += count * face;
+  }
+
+  if (REGULAR && (G->maxdeg * G->maxsize != G->maxedges || G->maxdeg < 6)) {
+    fprintf(stderr, "ERROR: For regular graphs, all faces should have the same size n > 5.\n");
+    return 1;
   }
 
   if (G->maxsize == 1) {
@@ -1432,6 +1567,9 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < G->size; i++) labeled[i] = 0;
     restlabel = malloc(G->maxsize * sizeof(int));
     filtered_numbs = malloc(2 * G->maxedges * sizeof(int));
+  }
+  if (REGULAR) {
+    construct_regular_tiling(G->maxdeg, G->maxsize);
   }
   if (KEKULE) {
     face_to_extra = malloc((G->maxedges / 2) * sizeof(int));
