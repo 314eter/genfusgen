@@ -700,7 +700,8 @@ static REGULAR_EDGE *complete_regular_vertex(int n, REGULAR_EDGE *edge, int *ver
 
 static void construct_regular_tiling(int n, int radius) {
   int vertex = 0, r, v, i;
-  REGULAR_EDGE *edge, *inverse;
+  int stop[3] = {1, 3, 9};
+  REGULAR_EDGE *edge, *inverse, *temp;
 
   /* Construct first edge */
   edge = malloc(sizeof(REGULAR_EDGE));
@@ -713,11 +714,22 @@ static void construct_regular_tiling(int n, int radius) {
 
   regular_tiling = edge;
 
-  edge = complete_regular_vertex(n, edge, &vertex);
-
-  for (r = 1; r < radius; r++) {
-    v = vertex;
-    while (edge->start < v) edge = complete_regular_vertex(n, edge, &vertex);
+  if (n <= 5) {
+    while (edge->start != stop[n - 3]) edge = complete_regular_vertex(n, edge, &vertex);
+    do {
+      temp = edge;
+      for (i = 0; i < n - 1; i++) {
+        temp = temp->prev;
+      }
+      edge->next = temp; temp->prev = edge;
+      edge = temp->inverse;
+    } while (edge->start != stop[n - 3]);
+  } else {
+    edge = complete_regular_vertex(n, edge, &vertex);
+    for (r = 1; r < radius; r++) {
+      v = vertex;
+      while (edge->start < v) edge = complete_regular_vertex(n, edge, &vertex);
+    }
   }
 
   regular_mark = 0;
@@ -1488,15 +1500,14 @@ int main(int argc, char *argv[]) {
   G->maxdeg = G->maxsize = G->maxedges = 0;
   for (i = optind; i < argc; i++) {
     sscanf(argv[i], "%d:%d", &face, &count);
+    if (face < 3) {
+      fprintf(stderr, "ERROR: A face has at least 3 edges.\n");
+      return 1;
+    }
     if (face > G->maxdeg) G->maxdeg = face;
     if (face % 2) BIPARTITE = 0;
     G->maxsize += count;
     G->maxedges += count * face;
-  }
-
-  if (REGULAR && (G->maxdeg * G->maxsize != G->maxedges || G->maxdeg < 6)) {
-    fprintf(stderr, "ERROR: For regular graphs, all faces should have the same size n > 5.\n");
-    return 1;
   }
 
   if (G->maxsize == 1) {
