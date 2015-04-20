@@ -652,6 +652,7 @@ typedef struct re {
 static REGULAR_EDGE *regular_tiling;
 static int regular_size;
 static unsigned int regular_mark, *regular_marks;
+static int regular_spheres[3] = {4, 6, 12};
 
 static REGULAR_EDGE *complete_regular_vertex(int n, REGULAR_EDGE *edge, int *vertex) {
   int deg = 1;
@@ -700,7 +701,6 @@ static REGULAR_EDGE *complete_regular_vertex(int n, REGULAR_EDGE *edge, int *ver
 
 static void construct_regular_tiling(int n, int radius) {
   int vertex = 0, r, v, i;
-  int stop[3] = {1, 3, 9};
   REGULAR_EDGE *edge, *inverse, *temp;
 
   /* Construct first edge */
@@ -715,7 +715,7 @@ static void construct_regular_tiling(int n, int radius) {
   regular_tiling = edge;
 
   if (n <= 5) {
-    while (edge->start != stop[n - 3]) edge = complete_regular_vertex(n, edge, &vertex);
+    while (edge->start != regular_spheres[n - 3] - 3) edge = complete_regular_vertex(n, edge, &vertex);
     do {
       temp = edge;
       for (i = 0; i < n - 1; i++) {
@@ -723,7 +723,7 @@ static void construct_regular_tiling(int n, int radius) {
       }
       edge->next = temp; temp->prev = edge;
       edge = temp->inverse;
-    } while (edge->start != stop[n - 3]);
+    } while (edge->start != regular_spheres[n - 3] - 3);
   } else {
     edge = complete_regular_vertex(n, edge, &vertex);
     for (r = 1; r < radius; r++) {
@@ -1579,9 +1579,6 @@ int main(int argc, char *argv[]) {
     restlabel = malloc(G->maxsize * sizeof(int));
     filtered_numbs = malloc(2 * G->maxedges * sizeof(int));
   }
-  if (REGULAR) {
-    construct_regular_tiling(G->maxdeg, G->maxsize);
-  }
   if (KEKULE) {
     face_to_extra = malloc((G->maxedges / 2) * sizeof(int));
     saturated = malloc(G->maxedges * sizeof(int));
@@ -1591,10 +1588,23 @@ int main(int argc, char *argv[]) {
     path = malloc(G->maxedges * sizeof(EDGE*));
   }
 
+  /* Optimizations for regular filter */
+  if (REGULAR) {
+    if (G->maxsize < G->maxdeg) {
+      REGULAR = 0;
+    } else if (G->maxdeg < 6 && G->maxsize >= regular_spheres[G->maxdeg - 3]) {
+      REGULAR = 2;
+    } else {
+      construct_regular_tiling(G->maxdeg, G->maxsize);
+    }
+  }
+
   /* Start Construction */
   if (OUTPUT) write_header(OUTFILE);
   start = clock();
-  if (G->size == G->maxsize) {
+  if (REGULAR == 2) {
+    /* do nothing */
+  } else if (G->size == G->maxsize) {
     dual_count = 1;
     if (DUALS) {
       if (OUTPUT) write_planar_code(G);
