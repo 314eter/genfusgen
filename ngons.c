@@ -650,7 +650,7 @@ typedef struct re {
 } REGULAR_EDGE;
 
 static REGULAR_EDGE *regular_edges, *regular_edge, *regular_tiling;
-static int regular_size, *regular_degs;
+static int regular_size;
 static unsigned int regular_mark, *regular_marks;
 static int regular_spheres[3] = {4, 6, 12};
 
@@ -675,9 +675,6 @@ static REGULAR_EDGE *new_regular_edge(int start, int end) {
   edge->inverse = inverse; inverse->inverse = edge;
   edge->start = inverse->end = start;
   edge->end = inverse->start = end;
-
-  regular_degs[start]++;
-  regular_degs[end]++;
 
   return edge;
 }
@@ -749,8 +746,6 @@ static void construct_regular_tiling(int n, int radius) {
       while (edge->start < v) edge = complete_regular_vertex(n, edge, &vertex);
     }
   }
-
-  free(regular_degs);
 }
 
 static int regular(GRAPH *G) {
@@ -1613,13 +1608,12 @@ int main(int argc, char *argv[]) {
       regular_mark = 0;
       regular_size = compute_regular_size(G->maxdeg, G->maxsize);
       regular_marks = malloc(regular_size * sizeof(int));
-      regular_degs = malloc(regular_size * sizeof(int));
       regular_edges = malloc(G->maxdeg * regular_size * sizeof(REGULAR_EDGE));
-      if (!regular_marks || !regular_degs || !regular_edges) {
+      if (!regular_marks || !regular_edges) {
         fprintf(stderr, "ERROR: Not enough free memory available.\n");
         return 1;
       }
-      for (i = 0; i < regular_size; i++) regular_marks[i] = regular_degs[i] = 0;
+      for (i = 0; i < regular_size; i++) regular_marks[i] = 0;
 
       construct_regular_tiling(G->maxdeg, G->maxsize);
     }
