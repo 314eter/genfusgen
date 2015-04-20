@@ -649,10 +649,38 @@ typedef struct re {
   struct re *inverse;
 } REGULAR_EDGE;
 
-static REGULAR_EDGE *regular_tiling;
-static int regular_size;
+static REGULAR_EDGE *regular_edges, *regular_edge, *regular_tiling;
+static int regular_size, *regular_degs;
 static unsigned int regular_mark, *regular_marks;
 static int regular_spheres[3] = {4, 6, 12};
+
+static int compute_regular_size(int n, int radius) {
+  int i, v3 = n, v4 = n, size = n + 1;
+
+  if (n < 6) return regular_spheres[n - 3];
+
+  for (i = 1; i < radius; i++) {
+    v3 = v4 * (n - 6) + v3;
+    v4 = v3 + v4;
+    size += v4;
+  }
+
+  return size;
+}
+
+static REGULAR_EDGE *new_regular_edge(int start, int end) {
+  REGULAR_EDGE *edge = regular_edge++;
+  REGULAR_EDGE *inverse = regular_edge++;
+
+  edge->inverse = inverse; inverse->inverse = edge;
+  edge->start = inverse->end = start;
+  edge->end = inverse->start = end;
+
+  regular_degs[start]++;
+  regular_degs[end]++;
+
+  return edge;
+}
 
 static REGULAR_EDGE *complete_regular_vertex(int n, REGULAR_EDGE *edge, int *vertex) {
   int deg = 1;
@@ -666,18 +694,12 @@ static REGULAR_EDGE *complete_regular_vertex(int n, REGULAR_EDGE *edge, int *ver
   previous = other;
 
   for (; deg < n; deg++) {
-    newedge = malloc(sizeof(REGULAR_EDGE));
-    newinverse = malloc(sizeof(REGULAR_EDGE));
-    newedge->inverse = newinverse; newinverse->inverse = newedge;
-    newedge->start = newinverse->end = previous->start;
-    newedge->end = newinverse->start = (*vertex)++;
+    newedge = new_regular_edge(previous->start, (*vertex)++);
+    newinverse = newedge + 1;
     newedge->next = previous; previous->prev = newedge;
 
-    extraedge = malloc(sizeof(REGULAR_EDGE));
-    extrainverse = malloc(sizeof(REGULAR_EDGE));
-    extraedge->inverse = extrainverse; extrainverse->inverse = extraedge;
-    extraedge->start = extrainverse->end = previous->end;
-    extraedge->end = extrainverse->start = newedge->end;
+    extraedge = new_regular_edge(previous->end, newedge->end);
+    extrainverse = extraedge + 1;
     extraedge->prev = previous->inverse; extraedge->prev->next = extraedge;
     extraedge->next = extrainverse->prev = 0;
     extrainverse->next = newinverse; newinverse->prev = extrainverse;
@@ -687,11 +709,8 @@ static REGULAR_EDGE *complete_regular_vertex(int n, REGULAR_EDGE *edge, int *ver
 
   edge->next = previous; previous->prev = edge;
 
-  extraedge = malloc(sizeof(REGULAR_EDGE));
-  extrainverse = malloc(sizeof(REGULAR_EDGE));
-  extraedge->inverse = extrainverse; extrainverse->inverse = extraedge;
-  extraedge->start = extrainverse->end = previous->end;
-  extraedge->end = extrainverse->start = edge->end;
+  extraedge = new_regular_edge(previous->end, edge->end);
+  extrainverse = extraedge + 1;
   extraedge->prev = previous->inverse; extraedge->prev->next = extraedge;
   extraedge->next = extrainverse->prev = 0;
   extrainverse->next = edge->inverse; extrainverse->next->prev = extrainverse;
@@ -700,22 +719,21 @@ static REGULAR_EDGE *complete_regular_vertex(int n, REGULAR_EDGE *edge, int *ver
 }
 
 static void construct_regular_tiling(int n, int radius) {
-  int vertex = 0, r, v, i;
+  int vertex = 2, r, v, i;
   REGULAR_EDGE *edge, *inverse, *temp;
 
+  regular_edge = regular_edges;
+
   /* Construct first edge */
-  edge = malloc(sizeof(REGULAR_EDGE));
-  inverse = malloc(sizeof(REGULAR_EDGE));
-  edge->inverse = inverse; inverse->inverse = edge;
-  edge->start = inverse->end = vertex++;
-  edge->end = inverse->start = vertex++;
+  edge = new_regular_edge(0, 1);
+  inverse = edge + 1;
   edge->next = edge->prev = 0;
   inverse->next = inverse->prev = 0;
 
   regular_tiling = edge;
 
   if (n <= 5) {
-    while (edge->start != regular_spheres[n - 3] - 3) edge = complete_regular_vertex(n, edge, &vertex);
+    while (edge->start != regular_size - 3) edge = complete_regular_vertex(n, edge, &vertex);
     do {
       temp = edge;
       for (i = 0; i < n - 1; i++) {
@@ -723,7 +741,7 @@ static void construct_regular_tiling(int n, int radius) {
       }
       edge->next = temp; temp->prev = edge;
       edge = temp->inverse;
-    } while (edge->start != regular_spheres[n - 3] - 3);
+    } while (edge->start != regular_size - 3);
   } else {
     edge = complete_regular_vertex(n, edge, &vertex);
     for (r = 1; r < radius; r++) {
@@ -732,10 +750,7 @@ static void construct_regular_tiling(int n, int radius) {
     }
   }
 
-  regular_mark = 0;
-  regular_size = vertex;
-  regular_marks = malloc(regular_size * sizeof(int));
-  for (i = 0; i < regular_size; i++) regular_marks[i] = 0;
+  free(regular_degs);
 }
 
 static int regular(GRAPH *G) {
@@ -1510,7 +1525,7 @@ int main(int argc, char *argv[]) {
     G->maxedges += count * face;
   }
 
-  if (G->maxsize == 1) {
+  if (G->maxsize <= 1) {
     fprintf(stderr, "ERROR: The graph should have at least two faces.\n");
     return 1;
   }
@@ -1595,6 +1610,17 @@ int main(int argc, char *argv[]) {
     } else if (G->maxdeg < 6 && G->maxsize >= regular_spheres[G->maxdeg - 3]) {
       REGULAR = 2;
     } else {
+      regular_mark = 0;
+      regular_size = compute_regular_size(G->maxdeg, G->maxsize);
+      regular_marks = malloc(regular_size * sizeof(int));
+      regular_degs = malloc(regular_size * sizeof(int));
+      regular_edges = malloc(G->maxdeg * regular_size * sizeof(REGULAR_EDGE));
+      if (!regular_marks || !regular_degs || !regular_edges) {
+        fprintf(stderr, "ERROR: Not enough free memory available.\n");
+        return 1;
+      }
+      for (i = 0; i < regular_size; i++) regular_marks[i] = regular_degs[i] = 0;
+
       construct_regular_tiling(G->maxdeg, G->maxsize);
     }
   }
@@ -1645,6 +1671,10 @@ int main(int argc, char *argv[]) {
     free(vertexcode); free(anglecode);
     free(labeled); free(restlabel);
     free(filtered_numbs);
+  }
+  if (REGULAR == 1) {
+    free(regular_marks);
+    free(regular_edges);
   }
   if (KEKULE) {
     free(saturated); free(face_to_extra);
