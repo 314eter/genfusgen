@@ -649,10 +649,11 @@ typedef struct re {
   struct re *inverse;
 } REGULAR_EDGE;
 
-static REGULAR_EDGE *regular_edges, *regular_edge, *regular_tiling;
-static int regular_size;
-static unsigned int regular_mark, *regular_marks;
+static REGULAR_EDGE *regular_edges, *regular_edge, *regular_tiling, *regular_first_edge;
+static int regular_size, regular_diameter;
+static unsigned int regular_mark, *regular_marks, regular_last_dual;
 static int regular_spheres[3] = {4, 6, 12};
+static EDGE *regular_dual_edge;
 
 static int compute_regular_size(int n, int radius) {
   int i, v3 = n, v4 = n, size = n + 1;
@@ -666,6 +667,57 @@ static int compute_regular_size(int n, int radius) {
   }
 
   return size;
+}
+
+static void regular_find_center(GRAPH *G) {
+  int source, c, current, center = 0;
+  int i, vertices[G->size], distance[G->size], prev[G->size], n;
+  EDGE *b_edge, *b_temp, *edge, *temp;
+
+  regular_diameter = 0;
+
+  b_temp = b_edge = G->firstedge[G->size - 1];
+  do {
+    source = b_temp->start;
+    for (i = 0; i < G->size; i++) distance[i] = -1;
+    vertices[0] = source;
+    distance[source] = 0;
+    n = 1;
+    for (c = 0; c < G->size - 1; c++) {
+      current = vertices[c];
+      temp = edge = G->firstedge[current];
+      do {
+        if (distance[temp->end] == -1) {
+          distance[temp->end] = distance[current] + 1;
+          prev[temp->end] = current;
+          vertices[n++] = temp->end;
+        }
+        temp = temp->next;
+      } while (temp != edge);
+    }
+    current = vertices[G->size - 1];
+    if (distance[current] > regular_diameter) {
+      regular_diameter = distance[current];
+      center = current;
+      for (i = 0; i < distance[current] / 2; i++) center = prev[center];
+    }
+    b_temp = b_temp->inverse->next;
+  } while (b_temp != b_edge);
+
+  regular_dual_edge = G->firstedge[center];
+  regular_first_edge = regular_tiling;
+  while (!G->outer[regular_dual_edge->start]) {
+    regular_dual_edge = regular_dual_edge->inverse->prev->prev;
+    regular_first_edge = regular_first_edge->inverse->prev->prev;
+    if (G->outer[regular_dual_edge->start]) break;
+    regular_dual_edge = regular_dual_edge->inverse->next->next;
+    regular_first_edge = regular_first_edge->inverse->next->next;
+  }
+  while (!regular_dual_edge->label) {
+    regular_dual_edge = regular_dual_edge->next;
+    regular_first_edge = regular_first_edge->next;
+  }
+  regular_dual_edge = regular_dual_edge->prev->inverse;
 }
 
 static REGULAR_EDGE *new_regular_edge(int start, int end) {
@@ -750,8 +802,19 @@ static void construct_regular_tiling(int n, int radius) {
 
 static int regular(GRAPH *G) {
   int i;
-  EDGE *firstedge, *edge;
+  EDGE *edge;
   REGULAR_EDGE *regular_edge;
+
+  if (G->maxdeg >= 6) {
+    if (dual_count > regular_last_dual) {
+      regular_find_center(G);
+      regular_last_dual = dual_count;
+    }
+    if (regular_diameter + 1 < G->maxdeg) return 1;
+  } else {
+    edge = G->firstedge[G->size - 1];
+    regular_edge = regular_tiling;
+  }
 
   if (regular_mark >= UINT_MAX - G->maxdeg) {
     regular_mark = 1;
@@ -760,8 +823,8 @@ static int regular(GRAPH *G) {
     regular_mark += G->maxdeg / 2 + 1;
   }
 
-  edge = firstedge = G->firstedge[G->size - 1];
-  regular_edge = regular_tiling;
+  edge = regular_dual_edge;
+  regular_edge = regular_first_edge;
   do {
     if (regular_marks[regular_edge->start] == regular_mark) {
       return 0;
@@ -779,7 +842,7 @@ static int regular(GRAPH *G) {
 
     edge = edge->inverse->next;
     regular_edge = regular_edge->next->inverse;
-  } while (edge != firstedge);
+  } while (edge != regular_dual_edge);
 
   return 1;
 }
@@ -1331,6 +1394,7 @@ static void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nb
         if (!cont) {
           if (G->size == G->maxsize) {
             cont = 0;
+            /* Check wether outer face has at least 3 edges */
             if (G->boundary_length == 2) {
               temp = new_numberings[0];
               if (G->deg[temp->start] == G->deg[temp->end]) {
@@ -1339,6 +1403,7 @@ static void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nb
                 if (facecount[G->deg[temp->start] + 1] && facecount[G->deg[temp->end] + 1]) cont = 1;
               }
             }
+
             if (!cont) {
               dual_count++;
               if (new_nbtot == 1) dual_trivial++;
@@ -1597,8 +1662,6 @@ int main(int argc, char *argv[]) {
     firstedge = malloc(G->maxedges * sizeof(EDGE*));
     path = malloc(G->maxedges * sizeof(EDGE*));
   }
-
-  /* Optimizations for regular filter */
   if (REGULAR) {
     if (G->maxsize < G->maxdeg) {
       REGULAR = 0;
@@ -1606,7 +1669,7 @@ int main(int argc, char *argv[]) {
       REGULAR = 2;
     } else {
       regular_mark = 0;
-      regular_size = compute_regular_size(G->maxdeg, G->maxsize);
+      regular_size = compute_regular_size(G->maxdeg, G->maxsize / 2 + 1);
       regular_marks = malloc(regular_size * sizeof(int));
       regular_edges = malloc(G->maxdeg * regular_size * sizeof(REGULAR_EDGE));
       if (!regular_marks || !regular_edges) {
@@ -1615,7 +1678,7 @@ int main(int argc, char *argv[]) {
       }
       for (i = 0; i < regular_size; i++) regular_marks[i] = 0;
 
-      construct_regular_tiling(G->maxdeg, G->maxsize);
+      construct_regular_tiling(G->maxdeg, G->maxsize / 2 + 1);
     }
   }
 
