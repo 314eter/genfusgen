@@ -812,8 +812,8 @@ static int regular(GRAPH *G) {
     }
     if (regular_diameter + 1 < G->maxdeg) return 1;
   } else {
-    edge = G->firstedge[G->size - 1];
-    regular_edge = regular_tiling;
+    regular_dual_edge = G->firstedge[G->size - 1];
+    regular_first_edge = regular_tiling;
   }
 
   if (regular_mark >= UINT_MAX - G->maxdeg) {
