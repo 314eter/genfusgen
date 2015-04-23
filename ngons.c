@@ -21,6 +21,7 @@ typedef struct e {
 } EDGE;
 
 typedef struct {
+  int mindeg; /* minimum degree of verticex */
   int maxdeg; /* maximum degree of verticex */
   int maxsize; /* maximum number of vertices */
   int maxedges; /* maximum number of directed edges */
@@ -1313,8 +1314,12 @@ static void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nb
     if (cont) continue;
 
     /* Determine maxlength of boundary segment */
-    maxlength = G->maxdeg - 1;
-    while (maxlength > 0 && facecount[maxlength + 1] == 0) maxlength--;
+    if (G->mindeg >= 6) {
+      maxlength = 3;
+    } else {
+      maxlength = G->maxdeg - 1;
+      while (maxlength > 0 && facecount[maxlength + 1] == 0) maxlength--;
+    }
     if (G->boundary_length + 1 < maxlength) maxlength = G->boundary_length + 1;
 
     length = 0;
@@ -1572,7 +1577,7 @@ int main(int argc, char *argv[]) {
   GRAPH *G = malloc(sizeof(GRAPH));
 
   /* Determine maxdeg, maxsize and maxedges */
-  G->maxdeg = G->maxsize = G->maxedges = 0;
+  G->mindeg = G->maxdeg = G->maxsize = G->maxedges = 0;
   for (i = optind; i < argc; i++) {
     sscanf(argv[i], "%d:%d", &face, &count);
     if (face < 3) {
@@ -1580,6 +1585,7 @@ int main(int argc, char *argv[]) {
       return 1;
     }
     if (face > G->maxdeg) G->maxdeg = face;
+    if (!G->mindeg || face < G->mindeg) G->mindeg = face;
     if (face % 2) BIPARTITE = 0;
     G->maxsize += count;
     G->maxedges += count * face;
@@ -1587,6 +1593,11 @@ int main(int argc, char *argv[]) {
 
   if (G->maxsize <= 1) {
     fprintf(stderr, "ERROR: The graph should have at least two faces.\n");
+    return 1;
+  }
+
+  if (REGULAR && G->mindeg != G->maxdeg) {
+    fprintf(stderr, "ERROR: For regular graphs, all faces should have the same size n > 5.\n");
     return 1;
   }
 
