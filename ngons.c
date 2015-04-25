@@ -21,7 +21,6 @@ typedef struct e {
 } EDGE;
 
 typedef struct {
-  int mindeg; /* minimum degree of verticex */
   int maxdeg; /* maximum degree of verticex */
   int maxsize; /* maximum number of vertices */
   int maxedges; /* maximum number of directed edges */
@@ -46,7 +45,7 @@ typedef struct {
 
 #define NUMBER(G, numberings, numb, i) numberings[numb * G->boundary_length + i]
 
-static int DUALS, REGULAR, KEKULE, FIX, OUTPUT, BIPARTITE;
+static int DUALS, REGULAR, KEKULE, FIX, OUTPUT, BIPARTITE, LIMIT_SEGMENT;
 
 static int SPLIT_SIZE;
 
@@ -1314,7 +1313,7 @@ static void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nb
     if (cont) continue;
 
     /* Determine maxlength of boundary segment */
-    if (G->mindeg >= 6) {
+    if (LIMIT_SEGMENT) {
       maxlength = 3;
     } else {
       maxlength = G->maxdeg - 1;
@@ -1492,6 +1491,7 @@ int main(int argc, char *argv[]) {
   OUTPUT = 0;
   OUTFILE = stdout;
   BIPARTITE = 1;
+  LIMIT_SEGMENT = 0;
   MODULO = 0;
   INDEX = 0;
 
@@ -1573,11 +1573,11 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  int i, face, count, countsize;
+  int i, face, count, countsize, limit = 0;
   GRAPH *G = malloc(sizeof(GRAPH));
 
   /* Determine maxdeg, maxsize and maxedges */
-  G->mindeg = G->maxdeg = G->maxsize = G->maxedges = 0;
+  G->maxdeg = G->maxsize = G->maxedges = 0;
   for (i = optind; i < argc; i++) {
     sscanf(argv[i], "%d:%d", &face, &count);
     if (face < 3) {
@@ -1585,19 +1585,21 @@ int main(int argc, char *argv[]) {
       return 1;
     }
     if (face > G->maxdeg) G->maxdeg = face;
-    if (!G->mindeg || face < G->mindeg) G->mindeg = face;
     if (face % 2) BIPARTITE = 0;
+    if (face < 6) limit += (6 - face) * count;
     G->maxsize += count;
     G->maxedges += count * face;
   }
+
+  if (limit < 6) LIMIT_SEGMENT = 1;
 
   if (G->maxsize <= 1) {
     fprintf(stderr, "ERROR: The graph should have at least two faces.\n");
     return 1;
   }
 
-  if (REGULAR && G->mindeg != G->maxdeg) {
-    fprintf(stderr, "ERROR: For regular graphs, all faces should have the same size n > 5.\n");
+  if (REGULAR && (G->maxdeg * G->maxsize != G->maxedges)) {
+    fprintf(stderr, "ERROR: For regular graphs, all faces should have the same size.\n");
     return 1;
   }
 
