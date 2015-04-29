@@ -202,9 +202,9 @@ static void compute_dual_code(GRAPH* G, unsigned char *code) {
   }
 }
 
-static void write_header(FILE *fp) {
+static void write_header() {
   unsigned char header[15] = ">>planar_code<<";
-  fwrite(header, sizeof(unsigned char), 15, fp);
+  fwrite(header, sizeof(unsigned char), 15, OUTFILE);
 }
 
 static void write_planar_code(GRAPH *G) {
@@ -1464,6 +1464,154 @@ static void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nb
 }
 
 
+static void start_construction(int maxdeg, int maxsize, int maxedges, int *facecount) {
+  int i, countsize, nbtot, nbop;
+
+  /* Initialize graph */
+  GRAPH *G = malloc(sizeof(GRAPH));
+  G->maxdeg = maxdeg; G->maxsize = maxsize; G->maxedges = maxedges;
+  countsize = (G->maxdeg + 1) * (G->maxdeg + 2); /* (G->maxdeg + 1) * (G->maxdeg / 2 + 2) */
+  G->counter = malloc(countsize * sizeof(int));
+  for (i = 0; i < countsize; i++) G->counter[i] = 0;
+  G->deg = malloc(G->maxsize * sizeof(int));
+  G->outer = malloc(G->maxsize * sizeof(int));
+  G->label = malloc(G->maxsize * sizeof(int));
+  G->firstedge = malloc(G->maxsize * sizeof(EDGE*));
+  G->matching = 0;
+
+  /* Initialize two vertices and two directed edge */
+  EDGE *edge = malloc(sizeof(EDGE));
+  EDGE *inverse = malloc(sizeof(EDGE));
+  edge->start = inverse->end = 0;
+  edge->end = inverse->start = 1;
+  edge->prev = edge->next = inverse->inverse = edge;
+  inverse->prev = inverse->next = edge->inverse = inverse;
+  edge->label = inverse->label = 1;
+  edge->leftface = inverse->rightface = 0;
+  edge->leftface = inverse->rightface = 1;
+  edge->matching = inverse->matching = 2 * G->matching;
+
+  G->size = 2;
+  G->edges = 2;
+  G->boundary_length = 2;
+  G->faces = 2;
+
+  INCR_COUNT(G, 1, 1); INCR_COUNT(G, 1, 1);
+
+  G->deg[0] = G->deg[1] = 1;
+  G->outer[0] = G->outer[1] = 1;
+  G->label[0] = G->label[1] = 0;
+  G->firstedge[0] = edge; G->firstedge[1] = inverse;
+
+  /* Initialize numberings */
+  nbtot = 4, nbop = 2;
+  EDGE *numberings[2 * G->boundary_length * G->boundary_length * sizeof(EDGE*)];
+  NUMBER(G, numberings, 0, 0) = edge; NUMBER(G, numberings, 0, 1) = inverse;
+  NUMBER(G, numberings, 1, 0) = inverse; NUMBER(G, numberings, 1, 1) = edge;
+  NUMBER(G, numberings, 2, 0) = edge; NUMBER(G, numberings, 2, 1) = inverse;
+  NUMBER(G, numberings, 3, 0) = inverse; NUMBER(G, numberings, 3, 1) = edge;
+
+  /* Initialize global variables */
+  if (!DUALS) {
+    vertexcode = malloc(G->maxedges * sizeof(int));
+    anglecode = malloc(G->maxedges * sizeof(int));
+    for (i = 0; i < G->maxedges; i++) anglecode[i] = 0;
+    labeled = malloc(G->maxsize * sizeof(int));
+    for (i = 0; i < G->size; i++) labeled[i] = 0;
+    restlabel = malloc(G->maxsize * sizeof(int));
+    filtered_numbs = malloc(2 * G->maxedges * sizeof(int));
+  }
+  if (KEKULE) {
+    face_to_extra = malloc((G->maxedges / 2) * sizeof(int));
+    saturated = malloc(G->maxedges * sizeof(int));
+    distance = malloc(G->maxedges * sizeof(int));
+    type = malloc(G->maxedges * sizeof(int));
+    firstedge = malloc(G->maxedges * sizeof(EDGE*));
+    path = malloc(G->maxedges * sizeof(EDGE*));
+  }
+  if (REGULAR) {
+    if (G->maxsize < G->maxdeg) {
+      REGULAR = 0;
+    } else if (G->maxdeg < 6 && G->maxsize >= regular_spheres[G->maxdeg - 3]) {
+      REGULAR = 2;
+    } else {
+      regular_mark = 0;
+      regular_size = compute_regular_size(G->maxdeg, G->maxsize / 2 + 1);
+      regular_marks = malloc(regular_size * sizeof(int));
+      regular_edges = malloc(G->maxdeg * regular_size * sizeof(REGULAR_EDGE));
+      if (!regular_marks || !regular_edges) {
+        fprintf(stderr, "ERROR: Not enough free memory available.\n");
+        exit(1);
+      }
+      for (i = 0; i < regular_size; i++) regular_marks[i] = 0;
+
+      construct_regular_tiling(G->maxdeg, G->maxsize / 2 + 1);
+    }
+  }
+
+  /* Start Construction */
+  if (OUTPUT) write_header();
+  if (REGULAR == 2) {
+    /* do nothing */
+  } else if (G->size == G->maxsize) {
+    dual_count = 1;
+    if (DUALS) {
+      if (OUTPUT) write_planar_code(G);
+    } else {
+      label_vertices(G, facecount, numberings, nbtot, nbop, 0);
+    }
+  } else {
+    construct_graphs(G, facecount, numberings, nbtot, nbop);
+  }
+
+  /* Free memory */
+  if (!DUALS) {
+    free(vertexcode); free(anglecode);
+    free(labeled); free(restlabel);
+    free(filtered_numbs);
+  }
+  if (REGULAR == 1) {
+    free(regular_marks);
+    free(regular_edges);
+  }
+  if (KEKULE) {
+    free(saturated); free(face_to_extra);
+    free(distance); free(type);
+    free(firstedge); free(path);
+  }
+  free(edge); free(inverse);
+  free(G->deg); free(G->outer); free(G->label);
+  free(G->counter); free(G->firstedge);
+  free(G);
+}
+
+static void construct_one_face(int size) {
+  int i;
+
+  if (KEKULE && size % 2) return;
+
+  global_count = dual_count = labeled_count = dual_trivial = labeled_trivial = 1;
+
+  if (OUTPUT) {
+    write_header();
+    if (DUALS) {
+      fputc(1, OUTFILE);
+      fputc(0, OUTFILE);
+    } else {
+      fputc(size, OUTFILE);
+      fputc(size, OUTFILE);
+      for (i = 1; i < size; i++) {
+        fputc(i + 1, OUTFILE);
+        fputc(0, OUTFILE);
+        fputc(i, OUTFILE);
+      }
+      fputc(1, OUTFILE);
+      fputc(0, OUTFILE);
+    }
+  }
+}
+
+
 static void write_help() {
   fprintf(stdout, "Usage: ngons [-p] [-d] [-k] [-f] [-o OUTFILE] [-m M] [-i I] SPECS\n\n");
   fprintf(stdout, " -p,--planarcode write planar code to stdout or outfile\n");
@@ -1477,10 +1625,10 @@ static void write_help() {
   fprintf(stdout, " SPECS           sequence of pairs \"n:m\", meaning there are m n-gons\n");
 }
 
-
 int main(int argc, char *argv[]) {
   int c, option_index;
   char *charp;
+  int i, face, count, maxdeg, maxsize, maxedges, limit;
   clock_t start, end;
   double cpu_time;
 
@@ -1532,7 +1680,7 @@ int main(int argc, char *argv[]) {
         break;
       case 'm':
         MODULO = strtoul(optarg, &charp, 10);
-        if (*charp != '\0') {
+        if (*charp != 0) {
           fprintf(stderr, "\"%s\" is no numeric value.\n", optarg);
           return 1;
         }
@@ -1545,14 +1693,14 @@ int main(int argc, char *argv[]) {
         break;
       case 'i':
         INDEX = strtoul(optarg, &charp, 10);
-        if (*charp != '\0') {
+        if (*charp != 0) {
           fprintf(stderr, "\"%s\" is no numeric value.\n", optarg);
           return 1;
         }
         break;
       case 's':
         SPLIT_SIZE = strtoul(optarg, &charp, 10);
-        if (*charp != '\0') {
+        if (*charp != 0) {
           fprintf(stderr, "\"%s\" is no numeric value.\n", optarg);
           return 1;
         }
@@ -1563,152 +1711,61 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if (MODULO && INDEX >= MODULO) {
-    fprintf(stderr, "Index %ld is impossible modulo %ld.\n", INDEX, MODULO);
-    return 1;
-  }
-
   if (optind == argc) {
     write_help();
     return 1;
   }
 
-  int i, face, count, countsize, limit = 0;
-  GRAPH *G = malloc(sizeof(GRAPH));
+  if (MODULO && INDEX >= MODULO) {
+    fprintf(stderr, "Index %ld is impossible modulo %ld.\n", INDEX, MODULO);
+    return 1;
+  }
 
-  /* Determine maxdeg, maxsize and maxedges */
-  G->maxdeg = G->maxsize = G->maxedges = 0;
+  /* Determine maxdeg, maxsize, maxedges and facecount */
+  maxdeg = maxsize = maxedges = limit = 0;
   for (i = optind; i < argc; i++) {
-    sscanf(argv[i], "%d:%d", &face, &count);
+    if (sscanf(argv[i], "%d:%d", &face, &count) < 2) {
+      fprintf(stderr, "ERROR: Invalid arguments.\n");
+      return 1;
+    }
     if (face < 3) {
       fprintf(stderr, "ERROR: A face has at least 3 edges.\n");
       return 1;
     }
-    if (face > G->maxdeg) G->maxdeg = face;
+    if (face > maxdeg) maxdeg = face;
     if (face % 2) BIPARTITE = 0;
     if (face < 6) limit += (6 - face) * count;
-    G->maxsize += count;
-    G->maxedges += count * face;
+    maxsize += count;
+    maxedges += count * face;
   }
 
-  if (limit < 6) LIMIT_SEGMENT = 1;
-
-  if (G->maxsize <= 1) {
-    fprintf(stderr, "ERROR: The graph should have at least two faces.\n");
+  if (maxsize <= 0) {
+    fprintf(stderr, "ERROR: The graph should have at least one face.\n");
     return 1;
-  }
-
-  if (REGULAR && (G->maxdeg * G->maxsize != G->maxedges)) {
+  } else if (REGULAR && (maxdeg * maxsize != maxedges)) {
     fprintf(stderr, "ERROR: For regular graphs, all faces should have the same size.\n");
     return 1;
   }
 
-  if (MODULO && SPLIT_SIZE > G->maxsize) SPLIT_SIZE = G->maxsize;
-
-  /* Initialize facecount */
-  int facecount[G->maxdeg + 1];
-  for (i = 0; i <= G->maxdeg; i++) facecount[i] = 0;
+  int facecount[maxdeg + 1];
+  for (i = 0; i <= maxdeg; i++) facecount[i] = 0;
   for (i = optind; i < argc; i++) {
     sscanf(argv[i], "%d:%d", &face, &count);
-    facecount[face] = count;
+    facecount[face] = facecount[face] ? facecount[face] + count: count;
   }
 
-  /* Initialize graph */
-  countsize = (G->maxdeg + 1) * (G->maxdeg + 2); /* (G->maxdeg + 1) * (G->maxdeg / 2 + 2) */
-  G->counter = malloc(countsize * sizeof(int));
-  for (i = 0; i < countsize; i++) G->counter[i] = 0;
-  G->deg = malloc(G->maxsize * sizeof(int));
-  G->outer = malloc(G->maxsize * sizeof(int));
-  G->label = malloc(G->maxsize * sizeof(int));
-  G->firstedge = malloc(G->maxsize * sizeof(EDGE*));
-  G->matching = 0;
+  if (limit < 6) LIMIT_SEGMENT = 1;
 
-  /* Initialize two vertices and two directed edge */
-  EDGE *edge = malloc(sizeof(EDGE));
-  EDGE *inverse = malloc(sizeof(EDGE));
-  edge->start = inverse->end = 0;
-  edge->end = inverse->start = 1;
-  edge->prev = edge->next = inverse->inverse = edge;
-  inverse->prev = inverse->next = edge->inverse = inverse;
-  edge->label = inverse->label = 1;
-  edge->leftface = inverse->rightface = 0;
-  edge->leftface = inverse->rightface = 1;
-  edge->matching = inverse->matching = 2 * G->matching;
+  if (MODULO && SPLIT_SIZE > maxsize) SPLIT_SIZE = maxsize;
 
-  G->size = 2;
-  G->edges = 2;
-  G->boundary_length = 2;
-  G->faces = 2;
+  global_count = dual_count = labeled_count = dual_trivial = labeled_trivial = 0;
 
-  INCR_COUNT(G, 1, 1); INCR_COUNT(G, 1, 1);
-
-  G->deg[0] = G->deg[1] = 1;
-  G->outer[0] = G->outer[1] = 1;
-  G->label[0] = G->label[1] = 0;
-  G->firstedge[0] = edge; G->firstedge[1] = inverse;
-
-  /* Initialize numberings */
-  int nbtot = 4, nbop = 2;
-  EDGE *numberings[2 * G->boundary_length * G->boundary_length * sizeof(EDGE*)];
-  NUMBER(G, numberings, 0, 0) = edge; NUMBER(G, numberings, 0, 1) = inverse;
-  NUMBER(G, numberings, 1, 0) = inverse; NUMBER(G, numberings, 1, 1) = edge;
-  NUMBER(G, numberings, 2, 0) = edge; NUMBER(G, numberings, 2, 1) = inverse;
-  NUMBER(G, numberings, 3, 0) = inverse; NUMBER(G, numberings, 3, 1) = edge;
-
-  /* Initialize global variables */
-  global_count = dual_count = dual_index = labeled_count = 0;
-  dual_trivial = labeled_trivial = 0;
-  if (!DUALS) {
-    vertexcode = malloc(G->maxedges * sizeof(int));
-    anglecode = malloc(G->maxedges * sizeof(int));
-    for (i = 0; i < G->maxedges; i++) anglecode[i] = 0;
-    labeled = malloc(G->maxsize * sizeof(int));
-    for (i = 0; i < G->size; i++) labeled[i] = 0;
-    restlabel = malloc(G->maxsize * sizeof(int));
-    filtered_numbs = malloc(2 * G->maxedges * sizeof(int));
-  }
-  if (KEKULE) {
-    face_to_extra = malloc((G->maxedges / 2) * sizeof(int));
-    saturated = malloc(G->maxedges * sizeof(int));
-    distance = malloc(G->maxedges * sizeof(int));
-    type = malloc(G->maxedges * sizeof(int));
-    firstedge = malloc(G->maxedges * sizeof(EDGE*));
-    path = malloc(G->maxedges * sizeof(EDGE*));
-  }
-  if (REGULAR) {
-    if (G->maxsize < G->maxdeg) {
-      REGULAR = 0;
-    } else if (G->maxdeg < 6 && G->maxsize >= regular_spheres[G->maxdeg - 3]) {
-      REGULAR = 2;
-    } else {
-      regular_mark = 0;
-      regular_size = compute_regular_size(G->maxdeg, G->maxsize / 2 + 1);
-      regular_marks = malloc(regular_size * sizeof(int));
-      regular_edges = malloc(G->maxdeg * regular_size * sizeof(REGULAR_EDGE));
-      if (!regular_marks || !regular_edges) {
-        fprintf(stderr, "ERROR: Not enough free memory available.\n");
-        return 1;
-      }
-      for (i = 0; i < regular_size; i++) regular_marks[i] = 0;
-
-      construct_regular_tiling(G->maxdeg, G->maxsize / 2 + 1);
-    }
-  }
-
-  /* Start Construction */
-  if (OUTPUT) write_header(OUTFILE);
+  /* Start construction */
   start = clock();
-  if (REGULAR == 2) {
-    /* do nothing */
-  } else if (G->size == G->maxsize) {
-    dual_count = 1;
-    if (DUALS) {
-      if (OUTPUT) write_planar_code(G);
-    } else {
-      label_vertices(G, facecount, numberings, nbtot, nbop, 0);
-    }
+  if (maxsize == 1) {
+    construct_one_face(maxdeg);
   } else {
-    construct_graphs(G, facecount, numberings, nbtot, nbop);
+    start_construction(maxdeg, maxsize, maxedges, facecount);
   }
   end = clock();
   cpu_time = ((double) (end - start)) / CLOCKS_PER_SEC;
@@ -1723,38 +1780,14 @@ int main(int argc, char *argv[]) {
                     "graphs/s:       %.0f\n",
             cpu_time, dual_count / cpu_time);
   } else {
-    if (KEKULE) {
-      fprintf(stderr, "kekulean graphs: %ld\n", global_count);
-    } else {
-      fprintf(stderr, "graphs:          %ld\n", global_count);
-    }
-    fprintf(stderr, "inner duals:     %ld (%ld trivial)\n"
-                    "vertex-labeled:  %ld (%ld trivial)\n\n",
+    fprintf(stderr, "graphs:         %ld\n", global_count);
+    fprintf(stderr, "inner duals:    %ld (%ld trivial)\n"
+                    "vertex-labeled: %ld (%ld trivial)\n\n",
             dual_count, dual_trivial, labeled_count, labeled_trivial);
-    fprintf(stderr, "CPU time:        %.2fs\n"
-                    "graphs/s:        %.0f\n",
+    fprintf(stderr, "CPU time:       %.2fs\n"
+                    "graphs/s:       %.0f\n",
             cpu_time, global_count / cpu_time);
   }
-
-  /* Free memory */
-  if (!DUALS) {
-    free(vertexcode); free(anglecode);
-    free(labeled); free(restlabel);
-    free(filtered_numbs);
-  }
-  if (REGULAR == 1) {
-    free(regular_marks);
-    free(regular_edges);
-  }
-  if (KEKULE) {
-    free(saturated); free(face_to_extra);
-    free(distance); free(type);
-    free(firstedge); free(path);
-  }
-  free(edge); free(inverse);
-  free(G->deg); free(G->outer); free(G->label);
-  free(G->counter); free(G->firstedge);
-  free(G);
 
   return 0;
 }
