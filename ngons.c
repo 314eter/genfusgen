@@ -1,6 +1,5 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
 #include <getopt.h>
 #include <time.h>
 #include <limits.h>
@@ -1294,7 +1293,7 @@ static void remove_vertex(GRAPH* G) {
 static void construct_graphs(GRAPH *G, int *facecount, EDGE **numberings, int nbtot, int nbop) {
   int number, number2, i, cont;
   EDGE *edge, *temp;
-  int maxlength, l, length, vertex, prev_vertex;
+  int maxlength, l, length, vertex = 0, prev_vertex;
   int new_nbtot, new_nbop;
   EDGE *new_numberings[2 * (G->boundary_length + 2) * (G->boundary_length + 2)];
 
@@ -1537,7 +1536,7 @@ static void start_construction(int maxdeg, int maxsize, int maxedges, int *facec
     } else {
       regular_mark = 0;
       regular_size = compute_regular_size(G->maxdeg, G->maxsize / 2 + 1);
-      regular_marks = malloc(regular_size * sizeof(int));
+      regular_marks = malloc(regular_size * sizeof(unsigned int));
       regular_edges = malloc(G->maxdeg * regular_size * sizeof(REGULAR_EDGE));
       if (!regular_marks || !regular_edges) {
         fprintf(stderr, "ERROR: Not enough free memory available.\n");
@@ -1689,7 +1688,7 @@ int main(int argc, char *argv[]) {
           return 1;
         }
         dual_index = 0;
-        SPLIT_SIZE = (MODULO > 20) ? ((MODULO > 100) ? 14 : 13) : 12;
+        SPLIT_SIZE = (MODULO >= 20) ? ((MODULO >= 100) ? 14 : 13) : 12;
         break;
       case 'i':
         INDEX = strtoul(optarg, &charp, 10);
@@ -1756,6 +1755,7 @@ int main(int argc, char *argv[]) {
 
   if (limit < 6) LIMIT_SEGMENT = 1;
 
+  if (maxdeg < 6) SPLIT_SIZE += 6;
   if (MODULO && SPLIT_SIZE > maxsize) SPLIT_SIZE = maxsize;
 
   global_count = dual_count = labeled_count = dual_trivial = labeled_trivial = 0;
