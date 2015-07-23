@@ -1513,10 +1513,11 @@ static void start_construction(int maxdeg, int maxsize, int maxedges, int *facec
   /* Initialize global variables */
   if (!DUALS) {
     vertexcode = malloc(G->maxedges * sizeof(int));
+    for (i = 0; i < G->maxedges; i++) vertexcode[i] = 0;
     anglecode = malloc(G->maxedges * sizeof(int));
     for (i = 0; i < G->maxedges; i++) anglecode[i] = 0;
     labeled = malloc(G->maxsize * sizeof(int));
-    for (i = 0; i < G->size; i++) labeled[i] = 0;
+    for (i = 0; i < G->maxsize; i++) labeled[i] = 0;
     restlabel = malloc(G->maxsize * sizeof(int));
     filtered_numbs = malloc(2 * G->maxedges * sizeof(int));
   }
