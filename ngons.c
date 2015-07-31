@@ -395,7 +395,7 @@ static int kekule_add_edge(GRAPH *G, int list[], int *listsize, EDGE *edge) {
   return 0;
 }
 
-static int kekule_add_outer_left(GRAPH *G, int list[], int *listsize, int previous, EDGE *edge) {
+static int kekule_add_outer_left(int list[], int *listsize, int previous, EDGE *edge) {
   int end = edge->leftface;
 
   if (distance[end] == -1 && saturated[previous] % 2 == distance[previous] % 2) {
@@ -410,7 +410,7 @@ static int kekule_add_outer_left(GRAPH *G, int list[], int *listsize, int previo
   return 0;
 }
 
-static int kekule_add_outer_right(GRAPH *G, int list[], int *listsize, int previous, EDGE *edge) {
+static int kekule_add_outer_right(int list[], int *listsize, int previous, EDGE *edge) {
   int end = edge->inverse->next->leftface;
 
   if (distance[end] == -1 && saturated[previous] / 2 == distance[previous] % 2) {
@@ -425,7 +425,7 @@ static int kekule_add_outer_right(GRAPH *G, int list[], int *listsize, int previ
   return 0;
 }
 
-static int kekule_add_extra_right(GRAPH *G, int list[], int *listsize, EDGE *edge) {
+static int kekule_add_extra_right(int list[], int *listsize, EDGE *edge) {
   int previous = edge->leftface;
   int extra = face_to_extra[previous];
 
@@ -456,7 +456,7 @@ static int kekule_add_extra_right(GRAPH *G, int list[], int *listsize, EDGE *edg
   return 0;
 }
 
-static int kekule_add_extra_left(GRAPH *G, int list[], int *listsize, EDGE *edge) {
+static int kekule_add_extra_left(int list[], int *listsize, EDGE *edge) {
   int previous = edge->inverse->next->leftface;
   int end = edge->leftface;
   int extra = face_to_extra[end];
@@ -495,8 +495,8 @@ static int kekule_step(GRAPH *G, int *nsat, int list[], int *listsize, int face)
 
     /* extra */
     if (
-      (kekule_add_outer_left(G, list, listsize, face, edge) && kekule_augmenting(G, list[*listsize - 1])) ||
-      (kekule_add_outer_right(G, list, listsize, face, edge) && kekule_augmenting(G, list[*listsize - 1]))
+      (kekule_add_outer_left(list, listsize, face, edge) && kekule_augmenting(G, list[*listsize - 1])) ||
+      (kekule_add_outer_right(list, listsize, face, edge) && kekule_augmenting(G, list[*listsize - 1]))
     ) {
       *nsat += 2;
       return 1;
@@ -519,8 +519,8 @@ static int kekule_step(GRAPH *G, int *nsat, int list[], int *listsize, int face)
     /* outer face */
     if (
       (kekule_add_edge(G, list, listsize, edge) && kekule_augmenting(G, list[*listsize - 1])) ||
-      (kekule_add_extra_right(G, list, listsize, edge) && kekule_augmenting(G, list[*listsize - 1])) ||
-      (kekule_add_extra_left(G, list, listsize, edge->prev->inverse) && kekule_augmenting(G, list[*listsize - 1]))
+      (kekule_add_extra_right(list, listsize, edge) && kekule_augmenting(G, list[*listsize - 1])) ||
+      (kekule_add_extra_left(list, listsize, edge->prev->inverse) && kekule_augmenting(G, list[*listsize - 1]))
     ) {
       *nsat += 2;
       return 1;
@@ -575,8 +575,8 @@ static int kekule_exhaustive_step(GRAPH *G, int *nsat, int face) {
 
     /* extra */
     if (
-      (kekule_add_outer_left(G, &end, &success, face, edge) && kekule_exhaustive_augmenting(G, nsat, end, &success)) ||
-      (kekule_add_outer_right(G, &end, &success, face, edge) && kekule_exhaustive_augmenting(G, nsat, end, &success))
+      (kekule_add_outer_left(&end, &success, face, edge) && kekule_exhaustive_augmenting(G, nsat, end, &success)) ||
+      (kekule_add_outer_right(&end, &success, face, edge) && kekule_exhaustive_augmenting(G, nsat, end, &success))
     ) return 1;
 
   } else if (!edge->label) {
@@ -593,8 +593,8 @@ static int kekule_exhaustive_step(GRAPH *G, int *nsat, int face) {
     /* outer face */
     if (
       (kekule_add_edge(G, &end, &success, edge) && kekule_exhaustive_augmenting(G, nsat, end, &success)) ||
-      (kekule_add_extra_right(G, &end, &success, edge) && kekule_exhaustive_augmenting(G, nsat, end, &success)) ||
-      (kekule_add_extra_left(G, &end, &success, edge->prev->inverse) && kekule_exhaustive_augmenting(G, nsat, end, &success))
+      (kekule_add_extra_right(&end, &success, edge) && kekule_exhaustive_augmenting(G, nsat, end, &success)) ||
+      (kekule_add_extra_left(&end, &success, edge->prev->inverse) && kekule_exhaustive_augmenting(G, nsat, end, &success))
     ) return 1;
 
   }
@@ -1084,7 +1084,7 @@ static int testcanon_init(GRAPH *G, EDGE *givenedge, int representation[], int m
   else return 1;
 }
 
-static void construct_numb(GRAPH *G, EDGE *givenedge, EDGE **numberings, int mirror) {
+static void construct_numb(EDGE *givenedge, EDGE **numberings, int mirror) {
   register EDGE *run;
   EDGE *end;
 
@@ -1184,21 +1184,21 @@ static int canon(GRAPH *G, EDGE **numberings, int *nbtot, int *nbop) {
   if (numbs == 0) {
     *nbop = numbs_mirror;
     for (i = 0; i < numbs_mirror; i++) {
-      construct_numb(G, numblist_mirror[i], numberings + i * G->boundary_length, 0);
+      construct_numb(numblist_mirror[i], numberings + i * G->boundary_length, 0);
     }
   } else if (numblist[0]->label > 0) {
     for (i = 0; i < numbs; i++) {
-      construct_numb(G, numblist[i], numberings + i * G->boundary_length, 0);
+      construct_numb(numblist[i], numberings + i * G->boundary_length, 0);
     }
     for (i = 0; i < numbs_mirror; i++, numbs++) {
-      construct_numb(G, numblist_mirror[i], numberings + numbs * G->boundary_length, 1);
+      construct_numb(numblist_mirror[i], numberings + numbs * G->boundary_length, 1);
     }
   } else {
     for (i = 0; i < numbs; i++) {
-      construct_numb(G, numblist[i]->inverse, numberings + i * G->boundary_length, 0);
+      construct_numb(numblist[i]->inverse, numberings + i * G->boundary_length, 0);
     }
     for (i = 0; i < numbs_mirror; i++, numbs++) {
-      construct_numb(G, numblist_mirror[i]->inverse, numberings + numbs * G->boundary_length, 1);
+      construct_numb(numblist_mirror[i]->inverse, numberings + numbs * G->boundary_length, 1);
     }
   }
 
@@ -1792,4 +1792,3 @@ int main(int argc, char *argv[]) {
 
   return 0;
 }
-
