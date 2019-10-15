@@ -1,6 +1,6 @@
 # genfusgen
 
-Construction of Generalized Fusenes
+G. Brinkmann, P. Goetschalckx. “[Enumeration of Generalized Fusenes](http://match.pmf.kg.ac.rs/electronic_versions/Match74/n3/match74n3_505-520.pdf).” *MATCH Communications in Mathematical and in Computer Chemistry* (2015).
 
 ## Usage
 
