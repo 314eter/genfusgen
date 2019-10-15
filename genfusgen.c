@@ -1628,7 +1628,7 @@ static void construct_one_face(int size) {
 
 
 static void write_help() {
-  fprintf(stdout, "Usage: ngons [-p] [-d] [-k] [-f] [-o OUTFILE] [-m M] [-i I] SPECS\n\n");
+  fprintf(stdout, "Usage: genfusgen [-p] [-d] [-k] [-f] [-o OUTFILE] [-m M] [-i I] SPECS\n\n");
   fprintf(stdout, " -p,--planarcode write planar code to stdout or outfile\n");
   fprintf(stdout, " -d,--duals      generate inner duals\n");
   fprintf(stdout, " -r,--regular    filter subgraphs of regular lattice\n");

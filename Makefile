@@ -1,9 +1,9 @@
 CFLAGS=-O3
 
-ngons: ngons.c
+genfusgen: genfusgen.c
 	$(CC) $(CFLAGS) $^ -o $@
 
 .PHONY: clean
 
 clean:
-	rm -f ngons
+	rm -f genfusgen
